@@ -1,0 +1,20 @@
+# Railway Deployment Configuration
+# https://railway.app/
+
+# This file tells Railway how to deploy your Portfolio Analyzer
+
+[build]
+builder = "NIXPACKS"
+
+[deploy]
+startCommand = "python -m backend.app.main"
+healthcheckPath = "/"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[env]
+# These will be set in Railway dashboard
+# DATABASE_URL (auto-provided by Railway PostgreSQL)
+# API_HOST = 0.0.0.0
+# API_PORT = 8000
