@@ -114,7 +114,7 @@ if ($uiProcess) {
     Start-Process powershell -ArgumentList "-NoExit", "-Command", @"
         cd '$PWD\ui'
         Write-Host '🌐 Starting Streamlit UI on http://localhost:8501' -ForegroundColor Cyan
-        streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true
+        python -m streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true
 "@ -WindowStyle Minimized
     
     Write-ColorOutput Green "✅ UI server starting..."

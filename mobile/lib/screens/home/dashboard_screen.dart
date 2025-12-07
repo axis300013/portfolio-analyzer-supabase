@@ -43,6 +43,90 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
+  Future<void> _triggerDataUpdate() async {
+    // Show loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text('Updating data from backend...'),
+            SizedBox(height: 8),
+            Text(
+              'This may take 1-2 minutes',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      final result = await SupabaseService.triggerDataUpdate();
+      
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        
+        if (result['success'] == true) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Data updated successfully!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+          
+          // Refresh dashboard data
+          _loadDashboardData();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Update failed'),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Details',
+                textColor: Colors.white,
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Update Info'),
+                      content: SingleChildScrollView(
+                        child: Text(result['error']?.toString() ?? 'No details available'),
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('OK'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
+  }
+
   void _onNavigationTap(int index) {
     setState(() {
       _selectedIndex = index;
@@ -60,6 +144,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 3:
         context.go('/trends');
+        break;
+      case 4:
+        context.go('/analytics');
         break;
     }
   }
@@ -130,6 +217,46 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   child: ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
+                      // Data Update Button
+                      Card(
+                        elevation: 2,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16.0),
+                          child: Column(
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.info_outline, color: Colors.blue),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Data Updates',
+                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Use the desktop app to update prices and portfolio data. Changes sync automatically.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
                       _buildSummaryCard(
                         'Portfolio Value',
                         _summary!['portfolio_value'],
@@ -205,6 +332,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),
             label: 'Trends',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.table_chart),
+            label: 'Analytics',
           ),
         ],
       ),
@@ -327,9 +458,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () => context.go('/trends'),
             ),
+            const Divider(),
+            ListTile(
+              leading: const Icon(Icons.table_chart, color: Colors.orange),
+              title: const Text('Analytical Data'),
+              subtitle: const Text('Detailed time series data'),
+              trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+              onTap: () => context.go('/analytics'),
+            ),
           ],
         ),
       ),
     );
   }
 }
+

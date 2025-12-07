@@ -52,7 +52,7 @@ start "Portfolio Analyzer - API" /MIN cmd /c "cd backend && python -m uvicorn ap
 timeout /t 3 >nul
 
 echo Starting Streamlit UI...
-start "Portfolio Analyzer - UI" /MIN cmd /c "cd ui && streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true"
+start "Portfolio Analyzer - UI" /MIN cmd /c "cd ui && python -m streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true"
 
 echo.
 echo Waiting for services to start...

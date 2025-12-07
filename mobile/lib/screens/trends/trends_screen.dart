@@ -95,6 +95,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
       case 3:
         // Already on trends
         break;
+      case 4:
+        context.go('/analytics');
+        break;
     }
   }
 
@@ -206,6 +209,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),
             label: 'Trends',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.table_chart),
+            label: 'Analytics',
           ),
         ],
       ),

@@ -8,8 +8,11 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
 import 'screens/home/dashboard_screen.dart';
 import 'screens/portfolio/portfolio_screen.dart';
+import 'screens/portfolio/portfolio_management_screen.dart';
 import 'screens/wealth/wealth_screen.dart';
+import 'screens/wealth/wealth_management_screen.dart';
 import 'screens/trends/trends_screen.dart';
+import 'screens/analytics/analytics_screen.dart';
 import 'services/supabase_service.dart';
 
 void main() async {
@@ -65,12 +68,24 @@ class PortfolioAnalyzerApp extends ConsumerWidget {
           builder: (context, state) => const PortfolioScreen(),
         ),
         GoRoute(
+          path: '/portfolio/manage',
+          builder: (context, state) => const PortfolioManagementScreen(),
+        ),
+        GoRoute(
           path: '/wealth',
           builder: (context, state) => const WealthScreen(),
         ),
         GoRoute(
+          path: '/wealth/manage',
+          builder: (context, state) => const WealthManagementScreen(),
+        ),
+        GoRoute(
           path: '/trends',
           builder: (context, state) => const TrendsScreen(),
+        ),
+        GoRoute(
+          path: '/analytics',
+          builder: (context, state) => const AnalyticsScreen(),
         ),
       ],
     );

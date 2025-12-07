@@ -62,6 +62,9 @@ class _WealthScreenState extends State<WealthScreen> {
       case 3:
         context.go('/trends');
         break;
+      case 4:
+        context.go('/analytics');
+        break;
     }
   }
 
@@ -86,6 +89,11 @@ class _WealthScreenState extends State<WealthScreen> {
           onPressed: () => context.go('/'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () => context.go('/wealth/manage'),
+            tooltip: 'Manage Wealth',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -181,6 +189,10 @@ class _WealthScreenState extends State<WealthScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),
             label: 'Trends',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.table_chart),
+            label: 'Analytics',
           ),
         ],
       ),
