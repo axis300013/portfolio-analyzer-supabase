@@ -147,23 +147,93 @@ class SupabaseService {
     // Get all values for that date
     final data = await client.from('wealth_values').select('''
           *,
-          wealth_categories(name, category_type, is_liability)
+          wealth_categories(name, category_type, is_liability, currency)
         ''').order('wealth_category_id');
 
     return data.where((item) => item['value_date'] == latestDate).toList();
   }
 
+  // Get latest FX rates for a given date
+  static Future<Map<String, double>> getFxRates(DateTime date) async {
+    final dateStr = date.toIso8601String().substring(0, 10);
+
+    // Get latest FX rates for each currency before or on the given date
+    final fxData = await client
+        .from('fx_rates')
+        .select('base_currency, rate, rate_date')
+        .eq('target_currency', 'HUF')
+        .lte('rate_date', dateStr)
+        .order('rate_date', ascending: false);
+
+    // Build map of currency -> rate, taking the latest rate for each currency
+    Map<String, double> fxRates = {'HUF': 1.0};
+    Map<String, DateTime> latestDates = {};
+
+    for (var row in fxData) {
+      final currency = row['base_currency'] as String;
+      final rate = ((row['rate'] ?? 1.0) as num).toDouble();
+      final rateDate = DateTime.parse(row['rate_date'] as String);
+
+      // Only use this rate if we don't have one yet, or if this is newer
+      if (!latestDates.containsKey(currency) ||
+          rateDate.isAfter(latestDates[currency]!)) {
+        fxRates[currency] = rate;
+        latestDates[currency] = rateDate;
+      }
+    }
+
+    // Fallback rates if not found in database
+    fxRates.putIfAbsent('EUR', () => 400.0);
+    fxRates.putIfAbsent('USD', () => 360.0);
+
+    return fxRates;
+  }
+
   // Analytics Methods
   static Future<Map<String, dynamic>> getDashboardSummary() async {
     try {
-      // Get latest portfolio value from portfolio_values_daily
+      // Get latest snapshot from total_wealth_snapshots table (pre-calculated with FX rates)
+      final snapshot = await client
+          .from('total_wealth_snapshots')
+          .select('*')
+          .order('snapshot_date', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      if (snapshot != null) {
+        // Use pre-calculated snapshot data
+        final instrumentCount = (await getPortfolioInstruments()).length;
+        final wealthItemCount = (await getWealthItems()).length;
+
+        final result = {
+          'portfolio_value':
+              (snapshot['portfolio_value_huf'] as num).toDouble(),
+          'total_assets': (snapshot['other_assets_huf'] as num)
+              .toDouble(), // Show Other Assets only (not including portfolio)
+          'other_assets': (snapshot['other_assets_huf'] as num).toDouble(),
+          'total_liabilities':
+              (snapshot['total_liabilities_huf'] as num).toDouble(),
+          'net_wealth': (snapshot['net_wealth_huf'] as num).toDouble(),
+          'instrument_count': instrumentCount,
+          'wealth_item_count': wealthItemCount,
+        };
+
+        print('📊 Dashboard Summary from snapshot:');
+        print('   Portfolio: ${result['portfolio_value']}');
+        print('   Total Assets: ${result['total_assets']}');
+        print('   Other Assets: ${result['other_assets']}');
+        print('   Net Wealth: ${result['net_wealth']}');
+
+        return result;
+      }
+
+      // Fallback: Calculate from portfolio_values_daily if no snapshot exists
       final portfolioData = await getLatestPortfolioValues();
       final portfolioTotal = portfolioData.fold<double>(
         0.0,
         (sum, item) => sum + ((item['value_huf'] ?? 0) as num).toDouble(),
       );
 
-      // Get latest wealth values
       final wealthData = await getLatestWealthValues();
       final assets = wealthData.where((item) {
         final category = item['wealth_categories'];
@@ -183,16 +253,14 @@ class SupabaseService {
         (sum, item) => sum + ((item['present_value'] ?? 0) as num).toDouble(),
       );
 
-      // Net wealth = portfolio + other assets - liabilities
       final netWealth = portfolioTotal + assets - liabilities;
-
-      // Get counts
       final instrumentCount = (await getPortfolioInstruments()).length;
       final wealthItemCount = (await getWealthItems()).length;
 
       return {
         'portfolio_value': portfolioTotal,
-        'total_assets': assets,
+        'total_assets': assets, // Show Other Assets only (matching desktop)
+        'other_assets': assets,
         'total_liabilities': liabilities,
         'net_wealth': netWealth,
         'instrument_count': instrumentCount,
@@ -216,8 +284,9 @@ class SupabaseService {
 
     // Filter in Dart
     return data.where((item) {
-      if (instrumentId != null && item['instrument_id'] != instrumentId)
+      if (instrumentId != null && item['instrument_id'] != instrumentId) {
         return false;
+      }
       if (startDate != null || endDate != null) {
         final date = DateTime.parse(item['transaction_date'] as String);
         if (startDate != null && date.isBefore(startDate)) return false;
@@ -241,16 +310,29 @@ class SupabaseService {
         'price_date': priceDate,
         'currency': currency,
         'source': 'manual',
+        'retrieved_at': DateTime.now().toIso8601String(),
       };
 
       print('🔍 Attempting to save price with data: $data');
 
-      // Use upsert to update if exists, insert if not
-      await client
+      // Check if price exists for this instrument, date, and source
+      final existing = await client
           .from('prices')
-          .upsert(data, onConflict: 'instrument_id,price_date,source');
+          .select('id')
+          .eq('instrument_id', instrumentId)
+          .eq('price_date', priceDate)
+          .eq('source', 'manual')
+          .maybeSingle();
 
-      print('✅ Price saved successfully');
+      if (existing != null) {
+        // Update existing price
+        await client.from('prices').update(data).eq('id', existing['id']);
+        print('✅ Price updated successfully (ID: ${existing['id']})');
+      } else {
+        // Insert new price
+        await client.from('prices').insert(data);
+        print('✅ Price inserted successfully');
+      }
     } catch (e) {
       print('❌ Error saving price: $e');
       rethrow;

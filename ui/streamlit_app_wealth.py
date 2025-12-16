@@ -9,6 +9,12 @@ import plotly.graph_objects as go
 import plotly.express as px
 from datetime import datetime, timedelta, date
 from dateutil.relativedelta import relativedelta
+from analytics_helpers import (
+    calculate_rolling_yoy_analytics,
+    calculate_yoy_vs_baseline,
+    apply_granularity,
+    format_analytics_table
+)
 
 st.set_page_config(
     page_title="Portfolio & Wealth Analyzer",
@@ -312,7 +318,17 @@ with tab1:
                     title='Asset Allocation',
                     color_discrete_sequence=px.colors.qualitative.Set3
                 )
-                fig_assets.update_traces(textposition='inside', textinfo='percent+label')
+                # Add HUF values to labels with percentages
+                fig_assets.update_traces(
+                    textposition='inside', 
+                    textinfo='percent+label',
+                    hovertemplate='<b>%{label}</b><br>Value: %{value:,.0f} HUF<br>Percent: %{percent}<extra></extra>'
+                )
+                # Add custom text with HUF values
+                fig_assets.update_traces(
+                    text=[f"{row['Category']}<br>{row['Value']:,.0f} HUF" for _, row in breakdown_df.iterrows()],
+                    textinfo='percent+text'
+                )
                 st.plotly_chart(fig_assets, use_container_width=True)
             
             with col2:
@@ -800,10 +816,13 @@ with tab3:
                 fig_portfolio.add_trace(go.Scatter(
                     x=df_combined['snapshot_date'],
                     y=df_combined['portfolio_value_huf'],
-                    mode='lines+markers',
+                    mode='lines+markers+text',
                     name='Portfolio Value',
                     line=dict(color='#1976D2', width=3),
                     marker=dict(size=6),
+                    text=[f"{val/1_000_000:.1f}M" if val >= 1_000_000 else f"{val/1_000:.0f}K" for val in df_combined['portfolio_value_huf']],
+                    textposition="top center",
+                    textfont=dict(size=9, color='#1976D2'),
                     fill='tozeroy',
                     fillcolor='rgba(25, 118, 210, 0.1)',
                     hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Portfolio: %{y:,.0f} HUF<extra></extra>'
@@ -826,10 +845,13 @@ with tab3:
                 fig_net.add_trace(go.Scatter(
                     x=df_combined['snapshot_date'],
                     y=df_combined['net_wealth_huf'],
-                    mode='lines+markers',
+                    mode='lines+markers+text',
                     name='Net Wealth',
                     line=dict(color='#2E7D32', width=3),
                     marker=dict(size=6),
+                    text=[f"{val/1_000_000:.1f}M" if val >= 1_000_000 else f"{val/1_000:.0f}K" for val in df_combined['net_wealth_huf']],
+                    textposition="top center",
+                    textfont=dict(size=9, color='#2E7D32'),
                     fill='tozeroy',
                     fillcolor='rgba(46, 125, 50, 0.1)',
                     hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Net Wealth: %{y:,.0f} HUF<extra></extra>'
@@ -1412,7 +1434,7 @@ with tab6:
     with col3:
         granularity = st.selectbox(
             "Granularity",
-            options=["Daily", "Monthly"],
+            options=["Daily", "Monthly", "Yearly"],
             key="granularity"
         )
     
@@ -1476,6 +1498,10 @@ with tab6:
                 
                 # Merge portfolio and wealth
                 if wealth_df is not None:
+                    # Add loans_huf as alias if not present
+                    if 'total_liabilities_huf' in wealth_df.columns and 'loans_huf' not in wealth_df.columns:
+                        wealth_df['loans_huf'] = wealth_df['total_liabilities_huf']
+                    
                     df_combined_analytics = pd.merge(
                         df_portfolio_total,
                         wealth_df[[col for col in ['Date', 'cash_huf', 'property_huf', 'pension_huf', 'other_huf', 'loans_huf', 'net_wealth_huf'] if col in wealth_df.columns]],
@@ -1487,7 +1513,7 @@ with tab6:
                 
                 df_combined_analytics = df_combined_analytics.sort_values('Date')
                 
-                # If monthly granularity, resample
+                # Apply granularity
                 if granularity == "Monthly":
                     df_combined_analytics.set_index('Date', inplace=True)
                     df_combined_analytics = df_combined_analytics.resample('ME').last()
@@ -1502,6 +1528,38 @@ with tab6:
                         'value_huf': 'last'
                     }).reset_index()
                     df_daily = df_daily_monthly
+                    df_daily.rename(columns={'date': 'Date'}, inplace=True)
+                
+                elif granularity == "Yearly":
+                    # For yearly: get last available month of each year (prefer December)
+                    df_combined_analytics['Year'] = df_combined_analytics['Date'].dt.year
+                    yearly_records = []
+                    for year in df_combined_analytics['Year'].unique():
+                        year_data = df_combined_analytics[df_combined_analytics['Year'] == year]
+                        # Try December first
+                        dec_data = year_data[year_data['Date'].dt.month == 12]
+                        if not dec_data.empty:
+                            yearly_records.append(dec_data.iloc[-1])
+                        else:
+                            yearly_records.append(year_data.iloc[-1])
+                    df_combined_analytics = pd.DataFrame(yearly_records).drop('Year', axis=1)
+                    
+                    # Aggregate portfolio detail to yearly
+                    df_daily['date'] = pd.to_datetime(df_daily['date'])
+                    df_daily['Year'] = df_daily['date'].dt.year
+                    yearly_instruments = []
+                    for year in df_daily['Year'].unique():
+                        year_data = df_daily[df_daily['Year'] == year]
+                        for instrument in year_data['instrument_name'].unique():
+                            inst_data = year_data[year_data['instrument_name'] == instrument]
+                            # Get December or last month
+                            dec_data = inst_data[inst_data['date'].dt.month == 12]
+                            if not dec_data.empty:
+                                yearly_instruments.append(dec_data.iloc[-1])
+                            else:
+                                yearly_instruments.append(inst_data.iloc[-1])
+                    df_daily = pd.DataFrame(yearly_instruments).drop('Year', axis=1)
+                    df_daily.rename(columns={'date': 'Date'}, inplace=True)
                     df_daily.rename(columns={'date': 'Date'}, inplace=True)
                 else:
                     df_daily.rename(columns={'date': 'Date'}, inplace=True)
@@ -1551,15 +1609,25 @@ with tab6:
                     'property_huf': 'Property',
                     'pension_huf': 'Pension',
                     'other_huf': 'Other Assets',
-                    'loans_huf': 'Loans',
+                    'loans_huf': 'Loans/Liabilities',
+                    'total_liabilities_huf': 'Loans/Liabilities',
                     'net_wealth_huf': 'Net Wealth'
                 }
                 df_combined_display['Metric'] = df_combined_display['Metric'].map(lambda x: metric_names.get(x, x))
                 
-                # Format numbers in all date columns
+                # Format numbers in all date columns, show loans as negative
                 for col in df_combined_display.columns:
                     if col != 'Metric':
-                        df_combined_display[col] = df_combined_display[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) and str(x).replace('.','').replace('-','').isdigit() else x)
+                        # Check if this row is for loans/liabilities
+                        for idx in df_combined_display.index:
+                            if df_combined_display.loc[idx, 'Metric'] == 'Loans/Liabilities':
+                                val = df_combined_display.loc[idx, col]
+                                if pd.notna(val) and str(val).replace('.','').replace('-','').isdigit():
+                                    df_combined_display.loc[idx, col] = f"-{abs(float(val)):,.0f}"
+                            else:
+                                val = df_combined_display.loc[idx, col]
+                                if pd.notna(val) and str(val).replace('.','').replace('-','').isdigit():
+                                    df_combined_display.loc[idx, col] = f"{float(val):,.0f}"
                 
                 st.dataframe(df_combined_display, use_container_width=True, hide_index=True)
                 
@@ -1572,6 +1640,50 @@ with tab6:
                     mime="text/csv",
                     key="download_summary"
                 )
+                
+                # Analytics Table 1: Summary Analytics (Rolling 12M YoY%)
+                st.markdown("#### 📈 Summary Analytics - Rolling 12-Month % Change")
+                st.caption("Year-over-Year percentage change (Dec-to-Dec comparison)")
+                
+                value_cols_summary = ['Portfolio Total (HUF)', 'cash_huf', 'property_huf', 'pension_huf', 'loans_huf', 'net_wealth_huf']
+                df_yoy_rolling = calculate_rolling_yoy_analytics(
+                    df_combined_analytics.copy(),
+                    'Date',
+                    value_cols_summary
+                )
+                
+                yoy_cols = [col for col in df_yoy_rolling.columns if 'YoY%' in col]
+                df_yoy_display = df_yoy_rolling[['Date'] + yoy_cols].copy()
+                df_yoy_display.columns = df_yoy_display.columns.str.replace('_YoY%', '').str.replace('_huf', '').str.replace(' (HUF)', '')
+                df_yoy_display['Date'] = pd.to_datetime(df_yoy_display['Date']).dt.strftime('%Y-%m-%d')
+                df_yoy_display = df_yoy_display.set_index('Date').T.reset_index()
+                df_yoy_display.rename(columns={'index': 'Metric'}, inplace=True)
+                
+                for col in df_yoy_display.columns:
+                    if col != 'Metric':
+                        df_yoy_display[col] = df_yoy_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                
+                st.dataframe(df_yoy_display, use_container_width=True, hide_index=True)
+                
+                # Analytics Table 2: Summary Analytics YoY
+                st.markdown("#### 📊 Summary Analytics YoY - Year-over-Year vs Prior December")
+                st.caption("Each year compared to prior year's December baseline")
+                
+                df_yoy_baseline = calculate_yoy_vs_baseline(df_combined_analytics.copy(), 'Date', value_cols_summary)
+                
+                if not df_yoy_baseline.empty:
+                    df_yoy_baseline_display = df_yoy_baseline.copy()
+                    df_yoy_baseline_display.columns = df_yoy_baseline_display.columns.str.replace('_YoY%', '').str.replace('_huf', '').str.replace(' (HUF)', '')
+                    df_yoy_baseline_display = df_yoy_baseline_display.set_index('Year').T.reset_index()
+                    df_yoy_baseline_display.rename(columns={'index': 'Metric'}, inplace=True)
+                    
+                    for col in df_yoy_baseline_display.columns:
+                        if col != 'Metric':
+                            df_yoy_baseline_display[col] = df_yoy_baseline_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                    
+                    st.dataframe(df_yoy_baseline_display, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Insufficient data for year-over-year comparison")
                 
                 st.markdown("---")
                 
@@ -1614,9 +1726,206 @@ with tab6:
                     key="download_detail"
                 )
                 
+                # Analytics Table 3: Portfolio YoY by Instrument
+                st.markdown("#### 📈 Summary Analytics for Portfolio - Rolling 12-Month % Change")
+                st.caption("Year-over-Year percentage change by instrument (Dec-to-Dec)")
+                
+                df_instruments_yoy = pd.DataFrame()
+                for instrument in df_daily['instrument_name'].unique():
+                    inst_data = df_daily[df_daily['instrument_name'] == instrument].copy().sort_values('Date')
+                    inst_yoy = calculate_rolling_yoy_analytics(inst_data[['Date', 'value_huf']].copy(), 'Date', ['value_huf'])
+                    inst_yoy['instrument_name'] = instrument
+                    df_instruments_yoy = pd.concat([df_instruments_yoy, inst_yoy])
+                
+                if not df_instruments_yoy.empty and 'value_huf_YoY%' in df_instruments_yoy.columns:
+                    df_inst_yoy_pivot = df_instruments_yoy.pivot_table(
+                        index='instrument_name', 
+                        columns='Date', 
+                        values='value_huf_YoY%',
+                        dropna=False
+                    ).reset_index()
+                    
+                    df_inst_yoy_display = df_inst_yoy_pivot.copy()
+                    df_inst_yoy_display.rename(columns={'instrument_name': 'Instrument'}, inplace=True)
+                    df_inst_yoy_display.columns = [col.strftime('%Y-%m-%d') if isinstance(col, pd.Timestamp) else col for col in df_inst_yoy_display.columns]
+                    
+                    for col in df_inst_yoy_display.columns:
+                        if col != 'Instrument':
+                            df_inst_yoy_display[col] = df_inst_yoy_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                    
+                    st.dataframe(df_inst_yoy_display, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Insufficient data for portfolio YoY analysis")
+                
+                # Analytics Table 4: Portfolio YoY Baseline
+                st.markdown("#### 📊 Summary Analytics YoY Portfolio - Year-over-Year by Instrument")
+                st.caption("Each year compared to prior year's December baseline by instrument")
+                
+                df_inst_yoy_baseline_all = pd.DataFrame()
+                for instrument in df_daily['instrument_name'].unique():
+                    inst_data = df_daily[df_daily['instrument_name'] == instrument].copy().sort_values('Date')
+                    inst_yoy_baseline = calculate_yoy_vs_baseline(inst_data[['Date', 'value_huf']].copy(), 'Date', ['value_huf'])
+                    if not inst_yoy_baseline.empty:
+                        inst_yoy_baseline['Instrument'] = instrument
+                        df_inst_yoy_baseline_all = pd.concat([df_inst_yoy_baseline_all, inst_yoy_baseline])
+                
+                if not df_inst_yoy_baseline_all.empty:
+                    df_inst_baseline_pivot = df_inst_yoy_baseline_all.pivot_table(
+                        index='Instrument', 
+                        columns='Year', 
+                        values='value_huf_YoY%',
+                        dropna=False
+                    ).reset_index()
+                    
+                    for col in df_inst_baseline_pivot.columns:
+                        if col != 'Instrument':
+                            df_inst_baseline_pivot[col] = df_inst_baseline_pivot[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                    st.dataframe(df_inst_baseline_pivot, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Insufficient data for portfolio YoY baseline analysis")
+                
                 st.markdown("---")
                 
-                # Section 3: Instrument Breakdown Table
+                # Section 3: Wealth Detail by Category
+                st.markdown("### 💎 Wealth Detail by Category")
+                
+                # Fetch detailed wealth history
+                wealth_history_response = requests.get(
+                    f"{API_URL}/wealth/history",
+                    params={
+                        "start_date": analytics_start,
+                        "end_date": analytics_end
+                    }
+                )
+                
+                if wealth_history_response.status_code == 200:
+                    wealth_history = wealth_history_response.json()
+                    if wealth_history:
+                        df_wealth_detail = pd.DataFrame(wealth_history)
+                        df_wealth_detail['value_date'] = pd.to_datetime(df_wealth_detail['value_date'])
+                        
+                        # Apply granularity
+                        if granularity == "Monthly":
+                            df_wealth_detail.set_index('value_date', inplace=True)
+                            df_wealth_detail = df_wealth_detail.groupby(['category_name', pd.Grouper(freq='ME')]).agg({
+                                'present_value': 'last',
+                                'currency': 'last'
+                            }).reset_index()
+                        
+                        elif granularity == "Yearly":
+                            df_wealth_detail['Year'] = df_wealth_detail['value_date'].dt.year
+                            yearly_wealth = []
+                            for year in df_wealth_detail['Year'].unique():
+                                for category in df_wealth_detail['category_name'].unique():
+                                    cat_year_data = df_wealth_detail[
+                                        (df_wealth_detail['Year'] == year) &
+                                        (df_wealth_detail['category_name'] == category)
+                                    ]
+                                    if not cat_year_data.empty:
+                                        # Get December or last month
+                                        dec_data = cat_year_data[cat_year_data['value_date'].dt.month == 12]
+                                        if not dec_data.empty:
+                                            yearly_wealth.append(dec_data.iloc[-1])
+                                        else:
+                                            yearly_wealth.append(cat_year_data.iloc[-1])
+                            df_wealth_detail = pd.DataFrame(yearly_wealth).drop('Year', axis=1)
+                        
+                        # Pivot: categories in rows, dates in columns
+                        df_wealth_pivot = df_wealth_detail.pivot_table(
+                            index='category_name',
+                            columns='value_date',
+                            values='present_value',
+                            aggfunc='sum'
+                        ).reset_index()
+                        
+                        df_wealth_pivot_display = df_wealth_pivot.copy()
+                        df_wealth_pivot_display.rename(columns={'category_name': 'Category'}, inplace=True)
+                        
+                        # Format date columns
+                        df_wealth_pivot_display.columns = [
+                            col.strftime('%Y-%m-%d') if isinstance(col, pd.Timestamp) else col 
+                            for col in df_wealth_pivot_display.columns
+                        ]
+                        
+                        # Format numbers, show liabilities as negative
+                        for col in df_wealth_pivot_display.columns:
+                            if col != 'Category':
+                                for idx in df_wealth_pivot_display.index:
+                                    val = df_wealth_pivot_display.loc[idx, col]
+                                    category = df_wealth_pivot_display.loc[idx, 'Category']
+                                    # Check if this is a liability category
+                                    is_liability = any(keyword in category.lower() for keyword in ['loan', 'debt', 'liability', 'hitel', 'tartozás'])
+                                    if pd.notna(val):
+                                        if is_liability:
+                                            df_wealth_pivot_display.loc[idx, col] = f"-{abs(float(val)):,.0f}"
+                                        else:
+                                            df_wealth_pivot_display.loc[idx, col] = f"{float(val):,.0f}"
+                        
+                        st.dataframe(df_wealth_pivot_display, use_container_width=True, hide_index=True)
+                        
+                        # Download button for wealth detail
+                        csv_wealth_detail = df_wealth_detail.to_csv(index=False)
+                        st.download_button(
+                            label="📥 Download Wealth Detail CSV",
+                            data=csv_wealth_detail,
+                            file_name=f"wealth_detail_{analytics_start}_{analytics_end}_{granularity.lower()}.csv",
+                            mime="text/csv",
+                            key="download_wealth_detail"
+                        )
+                        
+                        # Analytics Table 5: Wealth YoY by Category
+                        st.markdown("#### 📈 Summary Analytics for Wealth - Rolling 12-Month % Change")
+                        st.caption("Year-over-Year percentage change by wealth category (Dec-to-Dec)")
+                        
+                        df_wealth_yoy = pd.DataFrame()
+                        for category in df_wealth_detail['category_name'].unique():
+                            cat_data = df_wealth_detail[df_wealth_detail['category_name'] == category].copy().sort_values('value_date')
+                            cat_yoy = calculate_rolling_yoy_analytics(cat_data[['value_date', 'present_value']].copy(), 'value_date', ['present_value'])
+                            cat_yoy['category_name'] = category
+                            df_wealth_yoy = pd.concat([df_wealth_yoy, cat_yoy])
+                        
+                        if not df_wealth_yoy.empty and 'present_value_YoY%' in df_wealth_yoy.columns:
+                            df_wealth_yoy_pivot = df_wealth_yoy.pivot_table(index='category_name', columns='value_date', values='present_value_YoY%').reset_index()
+                            df_wealth_yoy_display = df_wealth_yoy_pivot.copy()
+                            df_wealth_yoy_display.rename(columns={'category_name': 'Category'}, inplace=True)
+                            df_wealth_yoy_display.columns = [col.strftime('%Y-%m-%d') if isinstance(col, pd.Timestamp) else col for col in df_wealth_yoy_display.columns]
+                            
+                            for col in df_wealth_yoy_display.columns:
+                                if col != 'Category':
+                                    df_wealth_yoy_display[col] = df_wealth_yoy_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                            
+                            st.dataframe(df_wealth_yoy_display, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Insufficient data for wealth YoY analysis")
+                        
+                        # Analytics Table 6: Wealth YoY Baseline
+                        st.markdown("#### 📊 Summary Analytics YoY Wealth - Year-over-Year by Category")
+                        st.caption("Each year compared to prior year's December baseline by category")
+                        
+                        df_wealth_yoy_baseline_all = pd.DataFrame()
+                        for category in df_wealth_detail['category_name'].unique():
+                            cat_data = df_wealth_detail[df_wealth_detail['category_name'] == category].copy().sort_values('value_date')
+                            cat_yoy_baseline = calculate_yoy_vs_baseline(cat_data[['value_date', 'present_value']].copy(), 'value_date', ['present_value'])
+                            if not cat_yoy_baseline.empty:
+                                cat_yoy_baseline['Category'] = category
+                                df_wealth_yoy_baseline_all = pd.concat([df_wealth_yoy_baseline_all, cat_yoy_baseline])
+                        
+                        if not df_wealth_yoy_baseline_all.empty:
+                            df_wealth_baseline_pivot = df_wealth_yoy_baseline_all.pivot_table(index='Category', columns='Year', values='present_value_YoY%').reset_index()
+                            for col in df_wealth_baseline_pivot.columns:
+                                if col != 'Category':
+                                    df_wealth_baseline_pivot[col] = df_wealth_baseline_pivot[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "N/A")
+                            st.dataframe(df_wealth_baseline_pivot, use_container_width=True, hide_index=True)
+                        else:
+                            st.info("Insufficient data for wealth YoY baseline analysis")
+                    else:
+                        st.info("No wealth data found for selected period")
+                else:
+                    st.warning("Could not load wealth detail data")
+                
+                st.markdown("---")
+                
+                # Section 4: Instrument Breakdown (Latest)
                 st.markdown("### 📈 Instrument Breakdown (Latest)")
                 
                 latest_date = df_daily['Date'].max()

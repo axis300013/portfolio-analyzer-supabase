@@ -12,3 +12,6 @@ pydantic
 pydantic-settings
 beautifulsoup4
 lxml
+selenium
+webdriver-manager
+supabase

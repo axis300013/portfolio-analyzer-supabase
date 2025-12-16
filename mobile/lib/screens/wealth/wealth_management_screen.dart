@@ -535,7 +535,7 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2015, 7),
       lastDate: DateTime.now(),
     );
     if (picked != null) {
@@ -655,6 +655,15 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
                             (cat) => cat['id'] == value,
                             orElse: () => {},
                           );
+                          // Normalize currency field - convert 'null' string to actual null
+                          if (_selectedCategory != null &&
+                              _selectedCategory!['currency'] != null &&
+                              _selectedCategory!['currency']
+                                      .toString()
+                                      .toLowerCase() ==
+                                  'null') {
+                            _selectedCategory!['currency'] = null;
+                          }
                         });
                       },
                     ),

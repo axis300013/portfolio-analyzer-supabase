@@ -47,12 +47,12 @@ if errorlevel 1 (
 
 echo.
 echo Starting FastAPI backend...
-start "Portfolio Analyzer - API" /MIN cmd /c "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+start "Portfolio Analyzer - API" /MIN cmd /c "cd /d "%~dp0" && call .venv\Scripts\activate.bat && python -m uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
 
 timeout /t 3 >nul
 
 echo Starting Streamlit UI...
-start "Portfolio Analyzer - UI" /MIN cmd /c "cd ui && python -m streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true"
+start "Portfolio Analyzer - UI" /MIN cmd /c "cd /d "%~dp0" && call .venv\Scripts\activate.bat && streamlit run ui\streamlit_app_wealth.py --server.port 8501 --server.headless true"
 
 echo.
 echo Waiting for services to start...

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 
@@ -13,20 +12,17 @@ import 'screens/wealth/wealth_screen.dart';
 import 'screens/wealth/wealth_management_screen.dart';
 import 'screens/trends/trends_screen.dart';
 import 'screens/analytics/analytics_screen.dart';
-import 'services/supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Load environment variables
-  await dotenv.load(fileName: ".env");
-  
-  // Initialize Supabase
+
+  // Initialize Supabase with hardcoded credentials for release build
   await Supabase.initialize(
-    url: dotenv.env['SUPABASE_URL']!,
-    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+    url: 'https://hrlzrirsvifxsnccxvsa.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhybHpyaXJzdmlmeHNuY2N4dnNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDQzMTcsImV4cCI6MjA4MDUyMDMxN30.IAhjGmpcNA9KIi6fSTIPauVVNTIRSb8jBNCJTpmHodA',
   );
-  
+
   runApp(const ProviderScope(child: PortfolioAnalyzerApp()));
 }
 
@@ -39,9 +35,9 @@ class PortfolioAnalyzerApp extends ConsumerWidget {
       initialLocation: '/login',
       redirect: (context, state) {
         final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
-        final isLoggingIn = state.matchedLocation == '/login' || 
-                           state.matchedLocation == '/signup';
-        
+        final isLoggingIn = state.matchedLocation == '/login' ||
+            state.matchedLocation == '/signup';
+
         if (!isLoggedIn && !isLoggingIn) {
           return '/login';
         }

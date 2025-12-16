@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../services/supabase_service.dart';
+import '../../utils/analytics_helpers.dart';
 
 class TrendsScreen extends StatefulWidget {
   const TrendsScreen({super.key});
@@ -17,7 +18,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   int _selectedIndex = 3;
-  String _selectedPeriod = '6M';
+  String _selectedPeriod = 'ALL';
 
   final currencyFormatter = NumberFormat.currency(
     locale: 'hu_HU',
@@ -34,7 +35,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
   Future<void> _loadTrendsData() async {
     try {
       final DateTime endDate = DateTime.now();
-      final DateTime startDate = _getStartDate(_selectedPeriod);
+      // Always load ALL data from 2015 for YoY calculations
+      // Period filtering will be applied in chart builders
+      final DateTime startDate = DateTime(2015, 7);
 
       final portfolioData = await SupabaseService.getPortfolioSnapshots(
         startDate: startDate,
@@ -183,6 +186,42 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       ),
                       const SizedBox(height: 16),
                       _buildWealthChart(),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Portfolio YoY % Change',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Year-over-year percentage change (Dec-to-Dec)',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildPortfolioYoYChart(),
+                      const SizedBox(height: 32),
+                      const Text(
+                        'Net Wealth YoY % Change',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Year-over-year percentage change (Dec-to-Dec)',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildWealthYoYChart(),
                     ],
                   ),
                 ),
@@ -236,13 +275,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
                   onPressed: () {
                     setState(() {
                       _selectedPeriod = period;
-                      _isLoading = true;
                     });
-                    _loadTrendsData();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isSelected ? Colors.blue : Colors.grey[800],
-                    foregroundColor: isSelected ? Colors.white : Colors.grey[400],
+                    backgroundColor:
+                        isSelected ? Colors.blue : Colors.grey[800],
+                    foregroundColor:
+                        isSelected ? Colors.white : Colors.grey[400],
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                   child: Text(period),
@@ -269,8 +308,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
     // Group by date and sum values
     final Map<DateTime, double> dateValues = {};
+    final filterStartDate = _getStartDate(_selectedPeriod);
+
     for (final snapshot in _portfolioSnapshots) {
       final date = DateTime.parse(snapshot['snapshot_date'] as String);
+      // Apply period filter for absolute value charts
+      if (date.isBefore(filterStartDate)) continue;
+
       final value = ((snapshot['value_huf'] ?? 0) as num).toDouble();
       dateValues[date] = (dateValues[date] ?? 0) + value;
     }
@@ -287,6 +331,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           height: 250,
           child: LineChart(
             LineChartData(
+              minY: 0,
               gridData: const FlGridData(show: true),
               titlesData: FlTitlesData(
                 leftTitles: AxisTitles(
@@ -304,12 +349,28 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
+                    reservedSize: 50,
+                    interval: sortedDates.length > 20
+                        ? (sortedDates.length / 10).ceilToDouble()
+                        : 1,
                     getTitlesWidget: (value, meta) {
-                      if (value.toInt() >= 0 && value.toInt() < sortedDates.length) {
+                      if (value.toInt() >= 0 &&
+                          value.toInt() < sortedDates.length) {
                         final date = sortedDates[value.toInt()];
-                        return Text(
-                          DateFormat('MM/dd').format(date),
-                          style: const TextStyle(fontSize: 10),
+                        // Show year on first occurrence or January
+                        bool showYear = value.toInt() == 0 ||
+                            (value.toInt() > 0 &&
+                                sortedDates[value.toInt()].year !=
+                                    sortedDates[value.toInt() - 1].year);
+                        return Transform.rotate(
+                          angle: -1.5708, // -90 degrees in radians
+                          child: Text(
+                            showYear
+                                ? '${date.year}\n${DateFormat('MMM').format(date)}'
+                                : DateFormat('MMM').format(date),
+                            style: const TextStyle(fontSize: 9),
+                            textAlign: TextAlign.center,
+                          ),
                         );
                       }
                       return const Text('');
@@ -358,8 +419,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
 
     // Group by date and sum values
     final Map<DateTime, double> dateValues = {};
+    final filterStartDate = _getStartDate(_selectedPeriod);
+
     for (final snapshot in _wealthSnapshots) {
       final date = DateTime.parse(snapshot['snapshot_date'] as String);
+      // Apply period filter for absolute value charts
+      if (date.isBefore(filterStartDate)) continue;
+
       final value = ((snapshot['net_wealth_huf'] ?? 0) as num).toDouble();
       dateValues[date] = (dateValues[date] ?? 0) + value;
     }
@@ -376,6 +442,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
           height: 250,
           child: LineChart(
             LineChartData(
+              minY: 0,
               gridData: const FlGridData(show: true),
               titlesData: FlTitlesData(
                 leftTitles: AxisTitles(
@@ -393,12 +460,28 @@ class _TrendsScreenState extends State<TrendsScreen> {
                 bottomTitles: AxisTitles(
                   sideTitles: SideTitles(
                     showTitles: true,
+                    reservedSize: 50,
+                    interval: sortedDates.length > 20
+                        ? (sortedDates.length / 10).ceilToDouble()
+                        : 1,
                     getTitlesWidget: (value, meta) {
-                      if (value.toInt() >= 0 && value.toInt() < sortedDates.length) {
+                      if (value.toInt() >= 0 &&
+                          value.toInt() < sortedDates.length) {
                         final date = sortedDates[value.toInt()];
-                        return Text(
-                          DateFormat('MM/dd').format(date),
-                          style: const TextStyle(fontSize: 10),
+                        // Show year on first occurrence or year change
+                        bool showYear = value.toInt() == 0 ||
+                            (value.toInt() > 0 &&
+                                sortedDates[value.toInt()].year !=
+                                    sortedDates[value.toInt() - 1].year);
+                        return Transform.rotate(
+                          angle: -1.5708, // -90 degrees in radians
+                          child: Text(
+                            showYear
+                                ? '${date.year}\n${DateFormat('MMM').format(date)}'
+                                : DateFormat('MMM').format(date),
+                            style: const TextStyle(fontSize: 9),
+                            textAlign: TextAlign.center,
+                          ),
                         );
                       }
                       return const Text('');
@@ -426,6 +509,331 @@ class _TrendsScreenState extends State<TrendsScreen> {
                   ),
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPortfolioYoYChart() {
+    if (_portfolioSnapshots.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child: Text('No portfolio data available for this period'),
+          ),
+        ),
+      );
+    }
+
+    // Prepare data for YoY calculation (December-to-December)
+    List<Map<String, dynamic>> timeSeriesData = [];
+    for (final snapshot in _portfolioSnapshots) {
+      timeSeriesData.add({
+        'date': snapshot['snapshot_date'],
+        'value': ((snapshot['value_huf'] ?? 0) as num).toDouble(),
+      });
+    }
+
+    // Sort by date chronologically (oldest first)
+    timeSeriesData
+        .sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+
+    // Calculate YoY using December baselines (Dec-to-Dec comparison)
+    final yoyData = AnalyticsHelpers.calculateYoYBaseline(
+      data: timeSeriesData,
+      dateCol: 'date',
+      valueCols: ['value'],
+    );
+
+    if (yoyData.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child:
+                Text('Insufficient data for YoY calculation (need 12+ months)'),
+          ),
+        ),
+      );
+    }
+
+    // Filter out null YoY values and prepare chart data
+    final validData =
+        yoyData.where((row) => row['value_YoY%'] != null).toList();
+    if (validData.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child: Text('No YoY data available'),
+          ),
+        ),
+      );
+    }
+
+    // Sort by date chronologically (already sorted from timeSeriesData)
+    // Data already sorted by Year from calculateYoYBaseline
+
+    final years = validData.map((row) => (row['Year'] as int)).toList();
+    final spots = validData.asMap().entries.map((entry) {
+      final yoyPercent = (entry.value['value_YoY%'] as num).toDouble();
+      return FlSpot(entry.key.toDouble(), yoyPercent);
+    }).toList();
+
+    // Find min/max for better scaling
+    final yoyValues = spots.map((s) => s.y).toList();
+    final minY = yoyValues.reduce((a, b) => a < b ? a : b);
+    final maxY = yoyValues.reduce((a, b) => a > b ? a : b);
+    final yRange = maxY - minY;
+    final yMin = minY - (yRange * 0.1); // Add 10% padding
+    final yMax = maxY + (yRange * 0.1);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          height: 250,
+          child: LineChart(
+            LineChartData(
+              minY: yMin,
+              maxY: yMax,
+              gridData: const FlGridData(show: true),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 60,
+                    getTitlesWidget: (value, meta) {
+                      return Text(
+                        '${value.toStringAsFixed(2)}%',
+                        style: const TextStyle(fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 50,
+                    interval: years.length > 15 ? 2 : 1,
+                    getTitlesWidget: (value, meta) {
+                      if (value.toInt() >= 0 && value.toInt() < years.length) {
+                        final year = years[value.toInt()];
+                        return Transform.rotate(
+                          angle: -1.5708,
+                          child: Text(
+                            year.toString(),
+                            style: const TextStyle(
+                                fontSize: 9, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              borderData: FlBorderData(show: true),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: Colors.orange,
+                  barWidth: 3,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: Colors.orange.withOpacity(0.2),
+                  ),
+                ),
+              ],
+              // Add horizontal line at 0%
+              extraLinesData: ExtraLinesData(
+                horizontalLines: [
+                  HorizontalLine(
+                    y: 0,
+                    color: Colors.grey,
+                    strokeWidth: 1,
+                    dashArray: [5, 5],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWealthYoYChart() {
+    if (_wealthSnapshots.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child: Text('No wealth data available for this period'),
+          ),
+        ),
+      );
+    }
+
+    // Prepare data for YoY calculation
+    List<Map<String, dynamic>> timeSeriesData = [];
+    final Map<DateTime, double> dateValues = {};
+    for (final snapshot in _wealthSnapshots) {
+      final date = DateTime.parse(snapshot['snapshot_date'] as String);
+      final value = ((snapshot['net_wealth_huf'] ?? 0) as num).toDouble();
+      dateValues[date] = (dateValues[date] ?? 0) + value;
+    }
+
+    for (final entry in dateValues.entries) {
+      timeSeriesData.add({
+        'date': entry.key.toIso8601String().substring(0, 10),
+        'value': entry.value,
+      });
+    }
+
+    // Sort by date chronologically (oldest first)
+    timeSeriesData
+        .sort((a, b) => (a['date'] as String).compareTo(b['date'] as String));
+
+    // Calculate YoY using analytics helpers
+    final yoyData = AnalyticsHelpers.calculateYoYBaseline(
+      data: timeSeriesData,
+      dateCol: 'date',
+      valueCols: ['value'],
+    );
+
+    if (yoyData.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child:
+                Text('Insufficient data for YoY calculation (need 12+ months)'),
+          ),
+        ),
+      );
+    }
+
+    // Filter out null YoY values and prepare chart data
+    final validData =
+        yoyData.where((row) => row['value_YoY%'] != null).toList();
+    if (validData.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Center(
+            child: Text('No YoY data available'),
+          ),
+        ),
+      );
+    }
+
+    // Sort by date chronologically (already sorted from timeSeriesData)
+    // Data already sorted by Year from calculateYoYBaseline
+
+    final years = validData.map((row) => (row['Year'] as int)).toList();
+    final spots = validData.asMap().entries.map((entry) {
+      final yoyPercent = (entry.value['value_YoY%'] as num).toDouble();
+      return FlSpot(entry.key.toDouble(), yoyPercent);
+    }).toList();
+
+    // Find min/max for better scaling
+    final yoyValues = spots.map((s) => s.y).toList();
+    final minY = yoyValues.reduce((a, b) => a < b ? a : b);
+    final maxY = yoyValues.reduce((a, b) => a > b ? a : b);
+    final yRange = maxY - minY;
+    final yMin = minY - (yRange * 0.1); // Add 10% padding
+    final yMax = maxY + (yRange * 0.1);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: SizedBox(
+          height: 250,
+          child: LineChart(
+            LineChartData(
+              minY: yMin,
+              maxY: yMax,
+              gridData: const FlGridData(show: true),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 60,
+                    getTitlesWidget: (value, meta) {
+                      return Text(
+                        '${value.toStringAsFixed(2)}%',
+                        style: const TextStyle(fontSize: 10),
+                      );
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 50,
+                    interval: years.length > 15 ? 2 : 1,
+                    getTitlesWidget: (value, meta) {
+                      if (value.toInt() >= 0 && value.toInt() < years.length) {
+                        final year = years[value.toInt()];
+                        return Transform.rotate(
+                          angle: -1.5708,
+                          child: Text(
+                            year.toString(),
+                            style: const TextStyle(
+                                fontSize: 9, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        );
+                      }
+                      return const Text('');
+                    },
+                  ),
+                ),
+                rightTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+                topTitles: const AxisTitles(
+                  sideTitles: SideTitles(showTitles: false),
+                ),
+              ),
+              borderData: FlBorderData(show: true),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: spots,
+                  isCurved: true,
+                  color: Colors.purple,
+                  barWidth: 3,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: Colors.purple.withOpacity(0.2),
+                  ),
+                ),
+              ],
+              // Add horizontal line at 0%
+              extraLinesData: ExtraLinesData(
+                horizontalLines: [
+                  HorizontalLine(
+                    y: 0,
+                    color: Colors.grey,
+                    strokeWidth: 1,
+                    dashArray: [5, 5],
+                  ),
+                ],
+              ),
             ),
           ),
         ),

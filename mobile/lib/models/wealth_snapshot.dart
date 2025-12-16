@@ -21,12 +21,23 @@ class WealthSnapshot {
     this.currency,
   });
 
-  factory WealthSnapshot.fromJson(Map<String, dynamic> json) {
+  factory WealthSnapshot.fromJson(Map<String, dynamic> json,
+      [Map<String, double>? fxRates]) {
     final wealthCategory = json['wealth_categories'];
     final presentValue = ((json['present_value'] ?? 0) as num).toDouble();
-    final categoryType = (wealthCategory?['category_type'] as String? ?? 'other').toUpperCase();
+    final categoryType =
+        (wealthCategory?['category_type'] as String? ?? 'other').toUpperCase();
     final isLiability = wealthCategory?['is_liability'] == true;
-    
+    final currency = (wealthCategory?['currency'] as String?) ?? 'HUF';
+
+    // Get FX rate for this currency (default to 1.0 if not found)
+    final fxRate = (fxRates != null && fxRates.containsKey(currency))
+        ? fxRates[currency]!
+        : 1.0;
+
+    // Calculate HUF value using FX rate
+    final valueHuf = presentValue * fxRate;
+
     // Map database category_type to UI categories
     String uiCategory;
     if (isLiability || categoryType == 'LOAN') {
@@ -34,17 +45,17 @@ class WealthSnapshot {
     } else {
       uiCategory = categoryType; // 'CASH', 'PROPERTY', 'PENSION', 'OTHER'
     }
-    
+
     return WealthSnapshot(
       id: json['id'] as int,
       itemId: json['wealth_category_id'] as int,
       snapshotDate: DateTime.parse(json['value_date'] as String),
       valueInOriginalCurrency: presentValue,
-      fxRate: 1.0, // Always HUF, no FX conversion needed
-      valueHuf: presentValue,
+      fxRate: fxRate,
+      valueHuf: valueHuf,
       itemName: wealthCategory?['name'] as String?,
       category: uiCategory,
-      currency: wealthCategory?['currency'] as String?,
+      currency: currency,
     );
   }
 

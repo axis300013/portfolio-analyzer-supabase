@@ -197,7 +197,7 @@ class _ManualPricesTabState extends State<ManualPricesTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Price saved successfully!'),
+            content: Text('âœ… Price saved successfully!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
@@ -234,7 +234,7 @@ class _ManualPricesTabState extends State<ManualPricesTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Error saving price: $e')),
+          SnackBar(content: Text('âŒ Error saving price: $e')),
         );
       }
     }
@@ -244,7 +244,7 @@ class _ManualPricesTabState extends State<ManualPricesTab> {
     final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2015, 7),
       lastDate: DateTime.now(),
     );
     if (picked != null) {
@@ -454,7 +454,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('✅ Transaction saved successfully!'),
+            content: Text('âœ… Transaction saved successfully!'),
             backgroundColor: Colors.green,
           ),
         );
@@ -476,7 +476,7 @@ class _TransactionsTabState extends State<TransactionsTab> {
     final picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
+      firstDate: DateTime(2015, 7),
       lastDate: DateTime.now(),
     );
     if (picked != null) {
@@ -782,7 +782,7 @@ class _InstrumentsTabState extends State<InstrumentsTab> {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
-                        content: Text('✅ Instrument added successfully!'),
+                        content: Text('âœ… Instrument added successfully!'),
                         backgroundColor: Colors.green,
                       ),
                     );
@@ -839,7 +839,7 @@ class _InstrumentsTabState extends State<InstrumentsTab> {
                         ),
                         title: Text(instrument['name']),
                         subtitle: Text(
-                          '${instrument['instrument_type']} • ${instrument['currency']}'
+                          '${instrument['instrument_type']} â€¢ ${instrument['currency']}'
                           '${instrument['isin'] != null ? '\nISIN: ${instrument['isin']}' : ''}',
                         ),
                         trailing: IconButton(

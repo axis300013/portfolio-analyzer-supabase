@@ -2,6 +2,7 @@ from datetime import date
 from .fetch_fx_mnb import run_fx_fetch
 from .fetch_prices import run_price_fetch
 from .calculate_values import run_calculate_values
+from .fetch_wealth_automated import run_wealth_fetch
 
 def run_daily_etl():
     """Run complete daily ETL pipeline"""
@@ -17,6 +18,9 @@ def run_daily_etl():
     
     print("\nStep 3: Calculating portfolio values...")
     run_calculate_values()
+    
+    print("\nStep 4: Fetching automated wealth values...")
+    run_wealth_fetch()
     
     print(f"\n{'='*50}")
     print("ETL Complete!")

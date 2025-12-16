@@ -1,6 +1,206 @@
 # Portfolio Analyzer - Complete Implementation Guide
 
-**Latest Update: 2025-12-07 17:30 (PROJECT FINALIZATION COMPLETE!)**
+**Latest Update: 2025-12-11 12:00**
+- ✅ **MOBILE TRENDS YOY GRAPHS COMPLETE!** 📊✨ (2025-12-11 12:00)
+  - ✅ **Task 18: YoY Graphs in Trends Tab** (100% done):
+    - **Added 2 New Charts**:
+      * Portfolio YoY % Change: December-to-December percentage comparison
+      * Net Wealth YoY % Change: December-to-December percentage comparison
+    - **Implementation Details**:
+      * Uses `calculateYoYBaseline()` for Dec-only comparisons (not rolling)
+      * X-axis: Year labels (2015, 2016, 2017...) vertically rotated
+      * Y-axis: Percentage with 2 decimal places (e.g., "15.25%")
+      * Text color: Grey for better visibility on dark background
+      * Data sorting: Chronological (2015→2025, left to right)
+      * Zero baseline: Dashed grey line at 0% for reference
+    - **Data Loading Optimization**:
+      * Always loads ALL data from 2015-07 (for YoY calculations)
+      * Period filter (1M/3M/6M/1Y/ALL) applies only to absolute value charts
+      * Instant period switching (no reload needed)
+    - **Bug Fixes**:
+      * Fixed: Portfolio YoY used wrong field (`total_value_huf` → `value_huf`)
+      * Fixed: Data was reversed (2025→2015), now chronological
+      * Fixed: "Dec" showing in every label due to missing sort
+  - ✅ **Trends Tab Now Has 4 Charts**:
+    1. Portfolio Value (absolute HUF, filtered by period)
+    2. Net Wealth (absolute HUF, filtered by period)
+    3. Portfolio YoY % Change (December-only, all years)
+    4. Net Wealth YoY % Change (December-only, all years)
+  - ⏳ **Remaining**: Task 14 - Final mobile testing in Chrome
+
+**Previous Update: 2025-12-10 23:30**
+- ✅ **MOBILE UI OPTIMIZATION COMPLETE!** 📱✨ (2025-12-10 23:30)
+  - ✅ **Task 5c: UI Spacing & Pinch-to-Zoom** (100% done):
+    - **Compact Controls** (single-line layout):
+      * All controls fit in one row: Start Date + End Date + Granularity + Load button
+      * Reduced padding: 16→8px on Card, 24/16→12/12px on buttons
+      * Smaller fonts: Date labels 11px, dropdown 11px
+      * Icon-only refresh button (16px icon)
+    - **Compact Metric Cards**:
+      * Reduced from 12px padding to 6px
+      * Icon size: 24→14px
+      * Value font: 18→11px, Label font: 12→9px
+      * Vertical layout for space efficiency
+    - **Pinch-to-Zoom Added** (all 9 tables):
+      * Helper function: _buildZoomableTable(DataTable)
+      * InteractiveViewer wrapper with constrained: false
+      * Applied to 3 main tables + 6 YoY analytics tables
+      * Users can now zoom and pan all large tables on mobile
+  - ✅ **Task 5b: Year Labels on Trends Graphs** (completed earlier):
+    - Portfolio chart: Vertical year+month labels ("2024\nDec")
+    - Net Wealth chart: Same vertical format
+    - Transform.rotate(-90°) for vertical text
+    - Shows year only on first point or year change
+  - ⏳ **Remaining**: Task 6 - Test mobile app in Chrome (final step)
+
+**Previous Update: 2025-12-10 22:00**
+- ✅ **MOBILE ANALYTICS IMPLEMENTATION IN PROGRESS!** 📱 (2025-12-10 22:00)
+  - ✅ **Analytics Helpers Created**: `mobile/lib/utils/analytics_helpers.dart` (259 lines)
+    - calculateRollingYoY(): Dec-to-Dec percentage comparisons (Dart port)
+    - calculateYoYBaseline(): Year-over-year vs prior December baseline
+    - formatPercent(): Display formatting (1 decimal place)
+    - formatNumber(): Thousands separator
+    - pivotData(): Transform rows to columns
+    - applyGranularity(): Daily/Monthly/Yearly data aggregation
+  - ✅ **6 YoY Analytics Tables Added to Mobile** (Task 5a):
+    - **Combined Summary YoY Tables** (2 tables):
+      * _buildCombinedSummaryYoYRolling(): Rolling 12-month % change
+      * _buildCombinedSummaryYoYBaseline(): YoY vs December baseline
+    - **Portfolio Detail YoY Tables** (2 tables):
+      * _buildPortfolioYoYRolling(): Rolling % change by instrument
+      * _buildPortfolioYoYBaseline(): YoY baseline by instrument
+    - **Wealth Detail YoY Tables** (2 tables):
+      * _buildWealthYoYRolling(): Rolling % change by category
+      * _buildWealthYoYBaseline(): YoY baseline by category
+    - All 3 main tabs now show: Main table + 2 YoY analytics tables
+  - ⏳ **Remaining Mobile Tasks**:
+    - Task 5b: Add year labels to Trends graphs (vertical text)
+    - Task 5c: Add pinch-to-zoom for tables + optimize UI spacing
+    - Task 6: Test mobile app in Chrome
+
+**Previous Update: 2025-12-10 20:30**
+- ✅ **DESKTOP ANALYTICS ENHANCEMENTS COMPLETE!** 📊 (2025-12-10)
+  - ✅ **Cleanup & Fixes**:
+    - Archived 15 unused files to Archive/ folder
+    - Fixed Erste Bond price display logic (auto prices now override old manual entries)
+    - Deleted 2025-12-03 test snapshot (missing portfolio data)
+  - ✅ **Yearly Granularity Added** (Task 4e):
+    - New option: "Daily", "Monthly", "Yearly"
+    - Yearly shows last available month of each year (prefers December)
+    - Applied to all tables: Portfolio Summary, Portfolio Detail, Wealth Detail
+  - ✅ **6 New YoY Analytics Tables Added** (Tasks 4c,d,f,g):
+    - **Summary Analytics** (after Portfolio Summary Over Time):
+      * Rolling 12-month % change (Dec-to-Dec)
+      * YoY vs Prior December baseline
+    - **Portfolio Analytics** (after Portfolio Detail by Instrument):
+      * Rolling 12-month % change by instrument
+      * YoY vs Prior December baseline by instrument
+    - **Wealth Analytics** (after Wealth Detail by Category):
+      * Rolling 12-month % change by category
+      * YoY vs Prior December baseline by category
+  - ✅ **Helper Module Created**: `ui/analytics_helpers.py`
+    - calculate_rolling_yoy_analytics(): 12-month rolling comparison
+    - calculate_yoy_vs_baseline(): Year-over-year vs December baseline
+    - apply_granularity(): Handles Daily/Monthly/Yearly aggregation
+    - format_analytics_table(): Display formatting with % values
+  - ✅ **Price Logic Fixed**:
+    - Automatic prices now correctly override old manual prices
+    - ETL calculates: if auto_price.date >= manual_price.date, use auto price
+    - Display shows correct source (no longer shows "manual" for auto-updated prices)
+
+**Previous Update: 2025-12-09 19:45**
+- ✅ **HISTORICAL DATA IMPORT COMPLETE!** 📊 (2025-12-09)
+  - ✅ **history2.csv Imported**: 2015-2024 data (161 wealth + 55 portfolio records)
+    - Transposed CSV format: Years in row 1, dates in row 2, 102+ value columns
+    - Custom date parser: Combines year + month-day to create snapshot dates
+    - Dummy ISIN generation: 'HIST' + first 6 chars (e.g., 'HISTTBSZ20')
+    - Deduplication logic: Skips dates >= 2024-07-01 (avoids history.csv overlap)
+    - Script: `backend/app/import_history2_csv.py` (280 lines)
+  - ✅ **history.csv Imported**: 2024-2025 data (111 wealth + 68 portfolio records)
+    - Standard CSV format: Date, Asset Category, Item Name, Amount (HUF)
+    - Validation: Database totals match CSV totals (< 1 HUF difference)
+    - Script: `backend/app/import_history_csv.py`
+  - ✅ **Complete Historical Coverage**: 2015-07-01 to 2025-11-01
+    - Total records: 272 wealth + 123 portfolio = 395 historical records
+    - Time span: ~125 months (10.5 years)
+    - Known gap: January 2024 - June 2024 (6 months between CSV files)
+  - ✅ **Snapshot Generation**: 33 total snapshots in database
+    - 27 historical snapshots (2015-2025)
+    - 6 current snapshots (Dec 2024 onwards)
+    - Script: `backend/app/generate_all_snapshots.py` (145 lines)
+    - Verification: `backend/app/verify_snapshots.py`
+  - ✅ **Net Wealth Progression**: 104.4M HUF (2015-07) → 183.0M HUF (2025-12)
+  - ✅ **Apps Updated**: 
+    - Desktop: Analytical Data tables show full 10-year history
+    - Mobile: Trends tab default period 'ALL' (2015-2025)
+    - Both apps automatically load extended historical data from Supabase
+- ✅ **MOBILE APP FIXES COMPLETED!** 📱
+  - ✅ **NET Wealth Sync Fixed**: Mobile now includes Portfolio value in calculation
+    - Before: `NET = CASH + PROPERTY + PENSION - LIABILITIES`
+    - After: `NET = PORTFOLIO + CASH + PROPERTY + PENSION - LIABILITIES`
+    - Added portfolio value fetch to WealthScreen
+    - Added "Portfolio" column to summary header
+  - ✅ **Manual Price Supabase Sync Fixed**: Changed from upsert to check-then-update/insert pattern
+    - Handles cases where unique constraint name is different
+    - Added retrieved_at timestamp
+    - Better error logging
+  - ✅ **Currency Dropdown 'null' Fixed**: Normalizes 'null' string to actual null
+    - Detects 'null' string in currency field
+    - Converts to dart null for proper ?? 'HUF' fallback
+    - Applied in wealth value update form
+  - ✅ **Tasks 15-19**: Already completed in previous updates (documented in MOBILE_APP_COMPLETE_DOCUMENTATION.md)
+    - Graph axis fixes
+    - Date picker on Portfolio screen
+    - HUF values in pie charts
+    - Portfolio snapshot table
+    - Detailed Wealth table (Analytics screen)
+- ✅ **DESKTOP ENHANCEMENTS COMPLETED!** 📊
+  - ✅ Asset Breakdown graph: HUF values + percentages in pie chart
+  - ✅ Portfolio Summary: Loans displayed as negative values
+  - ✅ Analytical Data: Detailed "Wealth by Category" table with pivot view
+  - ✅ Monthly granularity: Working correctly (needs more historical data)
+  - ✅ **Automatic Monthly Loan Reductions System** 🤖
+    - Runs on backend startup (first day of new month)
+    - 4 loan categories tracked: CIB/Peterdy (-236,667 HUF), Kawasaki (-40,000 HUF), Cabrio (-118,958 HUF), Tartozás (-40,000 HUF)
+    - Tracks last reduction in `data/last_loan_reduction.txt`
+    - Manual trigger: `POST /wealth/reduce-loans`
+    - Module: `backend/app/automatic_loan_reductions.py` (270 lines)
+  - ✅ **Graph Data Labels Added** 📈
+    - Portfolio Value Trend: 45° rotated labels (M/K format)
+    - Net Wealth Over Time: 45° rotated labels (M/K format)
+    - Textangle=-45 for readability
+    - Professional financial dashboard appearance
+- ✅ **WEALTH AUTOMATION COMPLETED!** 🤖
+  - ✅ Automated Horizont Pension Fund fetching (Self Fund): 11,865,992 HUF
+  - ✅ Automated Alfa Voluntary Pension Fund fetching: 14,855,898 HUF
+  - ✅ Selenium-based web scraping with headless Chrome
+  - ✅ Generic `WealthFetcher` framework for extensibility
+  - ✅ Integrated into daily ETL pipeline (Step 4)
+  - ✅ Both fetchers working in production
+  - 📊 Data automatically updates when "Run Daily Update" clicked
+  - 🔧 Framework ready for additional wealth sources (banks, other pensions)
+- ✅ **PROJECT CLEANUP & ORGANIZATION!** 🧹
+  - ✅ Full project backup created: backup_20251209_153244_pre_restructure.zip (1434 MB)
+  - ✅ Debug files archived (HTML, PNG screenshots)
+  - ✅ Old documentation archived (6 markdown files)
+  - ✅ Old venv/ folder moved to archive
+  - ✅ Archive structure: debug_files/, old_docs/, old_venv/
+  - ✅ Services tested and functional after cleanup
+- ⏭️ **NEXT: MOBILE APP FIXES** (8 tasks remaining)
+  - Validate NET wealth sync Desktop ↔ Mobile
+  - Fix Manual Price override Supabase sync
+  - Fix currency showing 'null' in Wealth tab
+  - Fix Portfolio graph axis (79M issue)
+  - Add date picker to Portfolio screen (historical view)
+  - Add HUF values to mobile pie chart
+  - Add Portfolio snapshot table to mobile
+  - Add Detailed Wealth table to mobile
+- ⏭️ **NEXT: HISTORICAL DATA INTEGRATION** (2 tasks remaining)
+  - Parse history.csv (July 2024 - November 2025)
+  - Map to current categories (Self Fund, Voluntary Fund, etc.)
+  - Create historical database table
+  - Import to Desktop and Mobile analytics
+**Previous Update: 2025-12-07 17:30 (PROJECT FINALIZATION COMPLETE!)**
 - ✅ **PROJECT FINALIZATION COMPLETE!** 🎉
   - ✅ Full project backup created (Portfolio_Analyzer_Backup_20251207_171220)
   - ✅ Directory cleanup: archive/ structure (sql_backups, old_docs, temp_files)

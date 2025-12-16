@@ -16,6 +16,7 @@ class _WealthScreenState extends State<WealthScreen> {
   bool _isLoading = true;
   String? _errorMessage;
   int _selectedIndex = 2;
+  double _portfolioValue = 0.0; // Add portfolio value
 
   final currencyFormatter = NumberFormat.currency(
     locale: 'hu_HU',
@@ -31,9 +32,26 @@ class _WealthScreenState extends State<WealthScreen> {
 
   Future<void> _loadWealthData() async {
     try {
+      // Load both wealth values and portfolio value
       final data = await SupabaseService.getLatestWealthValues();
+      final portfolioData = await SupabaseService.getLatestPortfolioValues();
+
+      // Get FX rates for latest date
+      final latestDate = data.isNotEmpty
+          ? DateTime.parse(data[0]['value_date'] as String)
+          : DateTime.now();
+      final fxRates = await SupabaseService.getFxRates(latestDate);
+
+      // Calculate total portfolio value
+      final portfolioTotal = portfolioData.fold<double>(
+        0.0,
+        (sum, item) => sum + ((item['value_huf'] ?? 0) as num).toDouble(),
+      );
+
       setState(() {
-        _wealthData = data.map((item) => WealthSnapshot.fromJson(item)).toList();
+        _wealthData =
+            data.map((item) => WealthSnapshot.fromJson(item, fxRates)).toList();
+        _portfolioValue = portfolioTotal;
         _isLoading = false;
       });
     } catch (e) {
@@ -153,13 +171,17 @@ class _WealthScreenState extends State<WealthScreen> {
                             child: ListView(
                               padding: const EdgeInsets.all(16),
                               children: [
-                                _buildCategorySection('CASH', Colors.green, Icons.attach_money),
+                                _buildCategorySection(
+                                    'CASH', Colors.green, Icons.attach_money),
                                 const SizedBox(height: 16),
-                                _buildCategorySection('PROPERTY', Colors.blue, Icons.home),
+                                _buildCategorySection(
+                                    'PROPERTY', Colors.blue, Icons.home),
                                 const SizedBox(height: 16),
-                                _buildCategorySection('PENSION', Colors.orange, Icons.account_balance),
+                                _buildCategorySection('PENSION', Colors.orange,
+                                    Icons.account_balance),
                                 const SizedBox(height: 16),
-                                _buildCategorySection('LIABILITIES', Colors.red, Icons.credit_card),
+                                _buildCategorySection('LIABILITIES', Colors.red,
+                                    Icons.credit_card),
                               ],
                             ),
                           ),
@@ -204,7 +226,9 @@ class _WealthScreenState extends State<WealthScreen> {
         _getCategoryTotal('PROPERTY') +
         _getCategoryTotal('PENSION');
     final liabilities = _getCategoryTotal('LIABILITIES');
-    final netWealth = assets - liabilities;
+
+    // NET WEALTH = Portfolio + Other Assets - Liabilities
+    final netWealth = _portfolioValue + assets - liabilities;
 
     return Container(
       width: double.infinity,
@@ -238,6 +262,26 @@ class _WealthScreenState extends State<WealthScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
+              Column(
+                children: [
+                  const Text(
+                    'Portfolio',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.white70,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    currencyFormatter.format(_portfolioValue),
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
               Column(
                 children: [
                   const Text(
@@ -358,7 +402,7 @@ class _WealthScreenState extends State<WealthScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${snapshot.valueInOriginalCurrency.toStringAsFixed(2)} ${snapshot.currency}',
+                  '${snapshot.valueInOriginalCurrency.toStringAsFixed(2)} ${snapshot.currency ?? "HUF"}',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,

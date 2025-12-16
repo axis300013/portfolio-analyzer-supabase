@@ -1,15 +1,42 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import date
 from typing import List, Optional
 from pydantic import BaseModel
 from . import crud, models, wealth_crud
 from .db import get_db, engine
+from .automatic_loan_reductions import check_and_run_automatic_reductions
 
 # Create tables
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Portfolio Analyzer API")
+
+# Add CORS middleware to allow mobile web app access
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins (restrict in production)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Run automatic loan reductions on startup
+@app.on_event("startup")
+async def startup_event():
+    """Run automatic tasks on app startup"""
+    try:
+        db = next(get_db())
+        result = check_and_run_automatic_reductions(db)
+        if result["status"] == "completed":
+            print("✓ Automatic loan reductions completed on startup")
+        else:
+            print(f"ℹ Loan reductions: {result['message']}")
+    except Exception as e:
+        print(f"⚠ Error running automatic loan reductions: {e}")
+    finally:
+        db.close()
 
 @app.get("/")
 def root():
@@ -34,23 +61,37 @@ def get_snapshot(
     for item in snapshot:
         instrument = db.query(models.Instrument).get(item.instrument_id)
         
-        # Check if price came from manual override first (highest priority)
+        # Determine price source by checking which was used most recently
+        # First, get the most recent manual price
         manual_price = db.query(models.ManualPrice).filter(
             models.ManualPrice.instrument_id == item.instrument_id,
-            models.ManualPrice.override_date <= snapshot_date,
-            models.ManualPrice.price == item.price
+            models.ManualPrice.override_date <= snapshot_date
         ).order_by(models.ManualPrice.override_date.desc()).first()
         
-        if manual_price:
+        # Then, get the most recent automatic price
+        auto_price = db.query(models.Price).filter(
+            models.Price.instrument_id == item.instrument_id,
+            models.Price.price_date <= snapshot_date
+        ).order_by(models.Price.price_date.desc()).first()
+        
+        # Determine which source was actually used based on which is more recent
+        # and whether the price matches
+        if manual_price and auto_price:
+            # If manual price is more recent than auto price, it was used
+            if manual_price.override_date >= auto_price.price_date:
+                if abs(float(manual_price.price) - float(item.price)) < 0.01:
+                    price_source = f"manual ({manual_price.created_by or 'user'})"
+                else:
+                    price_source = auto_price.source
+            else:
+                # Auto price is more recent, it was used
+                price_source = auto_price.source
+        elif manual_price:
             price_source = f"manual ({manual_price.created_by or 'user'})"
+        elif auto_price:
+            price_source = auto_price.source
         else:
-            # Get the price source from regular prices table
-            price_record = db.query(models.Price).filter(
-                models.Price.instrument_id == item.instrument_id,
-                models.Price.price_date <= snapshot_date,
-                models.Price.price == item.price
-            ).order_by(models.Price.price_date.desc()).first()
-            price_source = price_record.source if price_record else "unknown"
+            price_source = "unknown"
         
         result.append({
             "isin": instrument.isin,
@@ -489,6 +530,57 @@ def get_wealth_values_api(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@app.get("/wealth/history")
+def get_all_wealth_history_api(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Get historical values for all wealth categories"""
+    try:
+        from datetime import datetime
+        
+        start = datetime.strptime(start_date, "%Y-%m-%d").date() if start_date else None
+        end = datetime.strptime(end_date, "%Y-%m-%d").date() if end_date else None
+        
+        # Query all wealth values with category info
+        query = db.query(
+            models.WealthValue.id,
+            models.WealthValue.value_date,
+            models.WealthValue.present_value,
+            models.WealthValue.note,
+            models.WealthCategory.name.label('category_name'),
+            models.WealthCategory.category_type,
+            models.WealthCategory.currency,
+            models.WealthCategory.is_liability
+        ).join(
+            models.WealthCategory,
+            models.WealthValue.wealth_category_id == models.WealthCategory.id
+        )
+        
+        if start:
+            query = query.filter(models.WealthValue.value_date >= start)
+        if end:
+            query = query.filter(models.WealthValue.value_date <= end)
+        
+        values = query.order_by(models.WealthValue.value_date).all()
+        
+        return [
+            {
+                "id": v.id,
+                "value_date": v.value_date.isoformat(),
+                "present_value": float(v.present_value),
+                "note": v.note,
+                "category_name": v.category_name,
+                "category_type": v.category_type,
+                "currency": v.currency,
+                "is_liability": v.is_liability
+            }
+            for v in values
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @app.get("/wealth/history/{category_id}")
 def get_wealth_history_api(
     category_id: int,
@@ -603,6 +695,7 @@ def get_wealth_snapshots_api(
                 "portfolio_value_huf": float(s.portfolio_value_huf),
                 "other_assets_huf": float(s.other_assets_huf),
                 "total_liabilities_huf": float(s.total_liabilities_huf),
+                "loans_huf": float(s.total_liabilities_huf),  # Alias for frontend compatibility
                 "net_wealth_huf": float(s.net_wealth_huf),
                 "cash_huf": float(s.cash_huf),
                 "property_huf": float(s.property_huf),
@@ -670,6 +763,15 @@ def run_daily_update():
             status_code=500,
             detail=f"ETL failed: {str(e)}"
         )
+
+@app.post("/wealth/reduce-loans")
+def manual_loan_reduction(db: Session = Depends(get_db)):
+    """Manually trigger loan reduction (for testing or manual run)"""
+    try:
+        result = check_and_run_automatic_reductions(db)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
