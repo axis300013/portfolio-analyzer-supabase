@@ -3,6 +3,7 @@ from .fetch_fx_mnb import run_fx_fetch
 from .fetch_prices import run_price_fetch
 from .calculate_values import run_calculate_values
 from .fetch_wealth_automated import run_wealth_fetch
+from .copy_wealth_values import run_copy_wealth
 
 def run_daily_etl():
     """Run complete daily ETL pipeline"""
@@ -19,7 +20,10 @@ def run_daily_etl():
     print("\nStep 3: Calculating portfolio values...")
     run_calculate_values()
     
-    print("\nStep 4: Fetching automated wealth values...")
+    print("\nStep 4: Copying static wealth values from previous day...")
+    run_copy_wealth()
+    
+    print("\nStep 5: Fetching automated wealth values...")
     run_wealth_fetch()
     
     print(f"\n{'='*50}")

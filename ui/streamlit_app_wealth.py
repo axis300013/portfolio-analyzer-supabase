@@ -663,7 +663,7 @@ with tab2:
 with tab3:
     st.subheader("📈 Wealth Trends & Analysis")
     
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
     
     with col1:
         trend_start = st.date_input(
@@ -680,6 +680,15 @@ with tab3:
         )
     
     with col3:
+        granularity = st.selectbox(
+            "Granularity",
+            options=["Daily", "Monthly", "Yearly"],
+            index=0,
+            key="trend_granularity",
+            help="Select time granularity for all charts"
+        )
+    
+    with col4:
         st.write("")
         st.write("")
         if st.button("🔄 Refresh", key="refresh_trends"):
@@ -687,6 +696,43 @@ with tab3:
     
     # Auto-load trends on page load
     try:
+        # Helper function to aggregate data by granularity
+        def aggregate_by_granularity(df, date_col, value_cols, granularity_type):
+            """
+            Aggregate dataframe by selected granularity
+            
+            Args:
+                df: DataFrame with date and value columns
+                date_col: Name of the date column
+                value_cols: List of value column names to aggregate
+                granularity_type: 'Daily', 'Monthly', or 'Yearly'
+            
+            Returns:
+                Aggregated DataFrame
+            """
+            df = df.copy()
+            df[date_col] = pd.to_datetime(df[date_col])
+            
+            if granularity_type == "Daily":
+                # No aggregation needed
+                return df
+            elif granularity_type == "Monthly":
+                # Aggregate by month (last day of each month)
+                df['period'] = df[date_col].dt.to_period('M')
+                agg_dict = {col: 'last' for col in value_cols}  # Take last value of month
+                agg_dict[date_col] = 'last'  # Keep last date of month
+                result = df.groupby('period').agg(agg_dict).reset_index(drop=True)
+                return result
+            elif granularity_type == "Yearly":
+                # Aggregate by year (last day of each year)
+                df['period'] = df[date_col].dt.to_period('Y')
+                agg_dict = {col: 'last' for col in value_cols}  # Take last value of year
+                agg_dict[date_col] = 'last'  # Keep last date of year
+                result = df.groupby('period').agg(agg_dict).reset_index(drop=True)
+                return result
+            
+            return df
+        
         # Get daily portfolio values for the date range
         portfolio_history_response = requests.get(
             f"{API_URL}/portfolio/{portfolio_id}/history",
@@ -778,6 +824,23 @@ with tab3:
                         df_combined['portfolio_value_huf'] + latest_other_assets
                     )
                 
+                # Apply granularity aggregation to all data
+                value_columns = ['portfolio_value_huf', 'net_wealth_huf']
+                
+                # Add other columns if they exist
+                optional_cols = ['cash_huf', 'property_huf', 'pension_huf', 'other_huf', 'loans_huf']
+                for col in optional_cols:
+                    if col in df_combined.columns:
+                        value_columns.append(col)
+                
+                # Aggregate data based on selected granularity
+                df_combined = aggregate_by_granularity(
+                    df_combined, 
+                    'snapshot_date', 
+                    value_columns, 
+                    granularity
+                )
+                
                 # Key metrics
                 latest = df_combined.iloc[-1]
                 first = df_combined.iloc[0]
@@ -809,7 +872,7 @@ with tab3:
                 st.markdown("---")
                 
                 # Portfolio value trend (primary chart)
-                st.markdown("#### Portfolio Value Trend (Daily)")
+                st.markdown(f"#### Portfolio Value Trend ({granularity})")
                 
                 fig_portfolio = go.Figure()
                 
@@ -838,7 +901,7 @@ with tab3:
                 st.plotly_chart(fig_portfolio, use_container_width=True)
                 
                 # Net wealth trend (always show)
-                st.markdown("#### Net Wealth Over Time (Daily)")
+                st.markdown(f"#### Net Wealth Over Time ({granularity})")
                 
                 fig_net = go.Figure()
                 
@@ -867,7 +930,7 @@ with tab3:
                 st.plotly_chart(fig_net, use_container_width=True)
                 
                 # Component breakdown - show portfolio vs other wealth
-                st.markdown("#### All Wealth Components Over Time")
+                st.markdown(f"#### All Wealth Components Over Time ({granularity})")
                 
                 # Calculate other assets for all days (using latest values)
                 if latest_other_assets > 0:
@@ -920,8 +983,8 @@ with tab3:
                 
                 # If we have detailed wealth snapshots, show detailed breakdown too
                 if 'cash_huf' in df_combined.columns and df_combined['cash_huf'].notna().any():
-                    st.markdown("#### Detailed Wealth Breakdown (Snapshot Days Only)")
-                    st.info("💡 This chart shows detailed breakdown of Cash, Property, and Pensions on days when you save wealth snapshots.")
+                    st.markdown(f"#### Detailed Wealth Breakdown - Snapshot Days Only ({granularity})")
+                    st.info(f"💡 This chart shows detailed breakdown of Cash, Property, and Pensions on days when you save wealth snapshots, aggregated by {granularity.lower()} period.")
                     
                     df_wealth = df_combined[df_combined['cash_huf'].notna()]
                     

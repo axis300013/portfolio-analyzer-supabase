@@ -8,12 +8,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 import os
 
-# Monthly reduction amounts (negative because they reduce the loan)
+# Monthly reduction amounts (reduce loan balances)
 MONTHLY_REDUCTIONS = {
-    "Hitel állomány CIB, Peterdy": Decimal("236667"),
-    "Kawasaki kötelezettség": Decimal("40000"),
-    "Cabrio kötelezettség": Decimal("118958"),
-    "Tartozás felém": Decimal("40000")
+    "Hitel??llom??ny CIB, Peterdy": Decimal("236667"),
+    "Kawasaki k??telezetts??g": Decimal("40000"),
+    "Cabrio k??telezetts??g": Decimal("118958")
 }
 
 # File to track last reduction date

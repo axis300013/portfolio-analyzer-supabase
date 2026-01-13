@@ -121,7 +121,7 @@ class AnalyticsHelpers {
           if (priorVal != null &&
               currentVal != null &&
               (priorVal as num) != 0) {
-            double priorValue = (priorVal as num).toDouble();
+            double priorValue = (priorVal).toDouble();
             double currentValue = (currentVal as num).toDouble();
             double yoyPct =
                 ((currentValue - priorValue) / priorValue.abs()) * 100;

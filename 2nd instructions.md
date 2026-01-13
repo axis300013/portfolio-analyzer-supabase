@@ -1,6 +1,56 @@
 # Portfolio Analyzer - Complete Implementation Guide
 
-**Latest Update: 2025-12-11 12:00**
+**Latest Update: 2026-01-05 16:00**
+- ✅ **DAILY UPDATE ETL BUG FIXED!** 🐛✨ (2026-01-05 16:00)
+  - ✅ **Issue Resolved**: Main tab missing liabilities and properties after daily refresh
+    - **Root Cause**:
+      * Daily ETL only fetched automated pension values (Self Fund, Voluntary Fund)
+      * Static wealth values (cash, properties, loans) were NOT copied from previous day
+      * Dashboard showed incomplete data (only 2 pension values instead of 19 total values)
+    - **Fix Applied**:
+      * Created new module: [backend/app/etl/copy_wealth_values.py](backend/app/etl/copy_wealth_values.py)
+      * Added `copy_static_wealth_values()` function to copy non-automated values
+      * Automated categories excluded: Self Fund, Voluntary Fund (fetched separately)
+      * Updated [backend/app/etl/run_daily_etl.py](backend/app/etl/run_daily_etl.py) to include Step 4: Copy static wealth values
+      * ETL order now: FX rates → Prices → Portfolio values → **Copy static wealth** → Fetch automated pensions
+    - **Result**: ✅ All 19 wealth values now present after daily update (verified 2026-01-05)
+    - **Categories Copied**: Cash accounts (9), Properties (4), Loans (3), Other (1)
+  - ⏳ **Next**: Monitor next daily update to ensure fix works consistently
+
+**Previous Update: 2025-12-31 11:45**
+- ✅ **MANUAL PRICE UPDATE BUG FIXED!** 🐛✨ (2025-12-31 11:45)
+  - ✅ **Issue Resolved**: "duplicate key value violates unique constraint manual_prices_pkey"
+    - **Root Cause**:
+      * `created_at` field was being overwritten on UPDATE operations
+      * `manual_prices_id_seq` sequence was out of sync with actual data
+    - **Fix Applied**:
+      * Modified [backend/app/crud.py](backend/app/crud.py) `add_manual_price()` function
+      * Removed `created_at` update for existing records (only set on INSERT)
+      * Created [fix_manual_prices_sequence.py](fix_manual_prices_sequence.py) to reset sequence
+    - **Result**: ✅ Sequence fixed (max_id=3 → next_val=4)
+    - **Usage**: If error recurs, run: `python fix_manual_prices_sequence.py`
+  - ⏳ **Next**: Test manual price updates in desktop app
+
+**Previous Update: 2025-12-30 09:30**
+- ✅ **DESKTOP WEALTH TRENDS TAB ENHANCED!** 📊✨ (2025-12-30 09:30)
+  - ✅ **Granularity Selector Added**:
+    - **New Feature**: Time granularity selector in Wealth Trends tab
+    - **Options**: Daily, Monthly, Yearly
+    - **Scope**: Applies to ALL 4 charts in the tab:
+      * Portfolio Value Trend
+      * Net Wealth Over Time
+      * All Wealth Components Over Time
+      * Detailed Wealth Breakdown (Snapshot Days Only)
+    - **Aggregation Logic**:
+      * Daily: No aggregation (raw daily data)
+      * Monthly: Last value of each month
+      * Yearly: Last value of each year
+    - **UI Layout**: Start Date + End Date + Granularity + Refresh button (4 columns)
+    - **Dynamic Titles**: All chart titles now show selected granularity (e.g., "Portfolio Value Trend (Monthly)")
+    - **Implementation**: Added `aggregate_by_granularity()` helper function in [streamlit_app_wealth.py](ui/streamlit_app_wealth.py)
+  - ⏳ **Next**: Consider adding granularity to other tabs if needed
+
+**Previous Update: 2025-12-11 12:00**
 - ✅ **MOBILE TRENDS YOY GRAPHS COMPLETE!** 📊✨ (2025-12-11 12:00)
   - ✅ **Task 18: YoY Graphs in Trends Tab** (100% done):
     - **Added 2 New Charts**:
