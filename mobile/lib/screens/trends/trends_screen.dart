@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 import '../../services/supabase_service.dart';
+import '../../services/daily_update_service.dart';
 import '../../utils/analytics_helpers.dart';
 
 class TrendsScreen extends StatefulWidget {
@@ -19,6 +20,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
   String? _errorMessage;
   int _selectedIndex = 3;
   String _selectedPeriod = 'ALL';
+  bool _isUpdating = false;
+  String? _updateStatus;
 
   final currencyFormatter = NumberFormat.currency(
     locale: 'hu_HU',
@@ -59,6 +62,129 @@ class _TrendsScreenState extends State<TrendsScreen> {
         _errorMessage = e.toString();
         _isLoading = false;
       });
+    }
+  }
+
+  Future<void> _triggerDailyUpdate() async {
+    if (_isUpdating) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Update already in progress')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUpdating = true;
+      _updateStatus = 'Initializing update...';
+    });
+
+    try {
+      // Show update confirmation dialog
+      if (!mounted) return;
+
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Run Daily Update?'),
+          content: const Text(
+            'This will fetch latest FX rates, instrument prices, and pension values. '
+            'Update typically takes 2-5 minutes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldContinue != true) {
+        setState(() {
+          _isUpdating = false;
+          _updateStatus = null;
+        });
+        return;
+      }
+
+      // Trigger the update
+      setState(() {
+        _updateStatus = 'Sending update request to backend...';
+      });
+
+      final result = await DailyUpdateService.triggerDailyUpdate();
+
+      if (mounted) {
+        if (result['success'] == true) {
+          setState(() {
+            _updateStatus = 'Update started! Check status in 2-5 minutes.';
+          });
+
+          // Show success notification
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Daily update triggered successfully'),
+                duration: Duration(seconds: 4),
+              ),
+            );
+          }
+
+          // Auto-refresh trends data after 2 minutes
+          Future.delayed(const Duration(minutes: 2), () {
+            if (mounted) {
+              setState(() {
+                _isLoading = true;
+              });
+              _loadTrendsData();
+            }
+          });
+        } else {
+          setState(() {
+            _updateStatus = 'Error: ${result['error']}';
+          });
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Update failed: ${result['error']}'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _updateStatus = 'Exception: ${e.toString()}';
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdating = false;
+        });
+        // Clear status message after 5 seconds
+        Future.delayed(const Duration(seconds: 5), () {
+          if (mounted) {
+            setState(() {
+              _updateStatus = null;
+            });
+          }
+        });
+      }
     }
   }
 
@@ -114,6 +240,22 @@ class _TrendsScreenState extends State<TrendsScreen> {
           onPressed: () => context.go('/'),
         ),
         actions: [
+          if (_updateStatus != null)
+            Tooltip(
+              message: _updateStatus,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Center(
+                  child: _isUpdating
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.check_circle, color: Colors.green),
+                ),
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -123,6 +265,18 @@ class _TrendsScreenState extends State<TrendsScreen> {
               });
               _loadTrendsData();
             },
+            tooltip: 'Refresh trends data',
+          ),
+          IconButton(
+            icon: _isUpdating
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.cloud_upload),
+            onPressed: _isUpdating ? null : _triggerDailyUpdate,
+            tooltip: 'Run daily update',
           ),
         ],
       ),
@@ -301,7 +455,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final minValue = values.reduce((a, b) => a < b ? a : b);
     final maxValue = values.reduce((a, b) => a > b ? a : b);
     final margin = (maxValue - minValue) * 0.05;
-    final double yMin = ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
+    final double yMin =
+        ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
     final double yMax = (maxValue + margin).toDouble();
 
     return Card(
@@ -421,7 +576,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
     final minValue = values.reduce((a, b) => a < b ? a : b);
     final maxValue = values.reduce((a, b) => a > b ? a : b);
     final margin = (maxValue - minValue) * 0.05;
-    final double yMin = ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
+    final double yMin =
+        ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
     final double yMax = (maxValue + margin).toDouble();
 
     return Card(
@@ -845,7 +1001,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       final dateStr = snapshot['snapshot_date'] as String;
       final date = DateTime.parse(dateStr);
       if (date.isBefore(startDate)) continue;
-      
+
       final value = ((snapshot['value_huf'] ?? 0) as num).toDouble();
       portfolioByDate[dateStr] = (portfolioByDate[dateStr] ?? 0) + value;
     }
@@ -856,7 +1012,7 @@ class _TrendsScreenState extends State<TrendsScreen> {
       final dateStr = snapshot['snapshot_date'] as String;
       final date = DateTime.parse(dateStr);
       if (date.isBefore(startDate)) continue;
-      
+
       final value = ((snapshot['net_wealth_huf'] ?? 0) as num).toDouble();
       wealthByDate[dateStr] = (wealthByDate[dateStr] ?? 0) + value;
     }
@@ -868,19 +1024,22 @@ class _TrendsScreenState extends State<TrendsScreen> {
     // Get first and last values for the selected period
     final portfolioDates = portfolioByDate.keys.toList()..sort();
     final wealthDates = wealthByDate.keys.toList()..sort();
-    
+
     final firstPortfolioValue = portfolioByDate[portfolioDates.first] ?? 0.0;
     final lastPortfolioValue = portfolioByDate[portfolioDates.last] ?? 0.0;
     final firstWealthValue = wealthByDate[wealthDates.first] ?? 0.0;
     final lastWealthValue = wealthByDate[wealthDates.last] ?? 0.0;
 
-    if (firstPortfolioValue == 0.0 || lastPortfolioValue == 0.0 || 
-        firstWealthValue == 0.0 || lastWealthValue == 0.0) {
+    if (firstPortfolioValue == 0.0 ||
+        lastPortfolioValue == 0.0 ||
+        firstWealthValue == 0.0 ||
+        lastWealthValue == 0.0) {
       return const SizedBox.shrink();
     }
 
     final totalPortfolioChange = lastPortfolioValue - firstPortfolioValue;
-    final totalPortfolioChangePct = (totalPortfolioChange / firstPortfolioValue) * 100;
+    final totalPortfolioChangePct =
+        (totalPortfolioChange / firstPortfolioValue) * 100;
     final totalWealthChange = lastWealthValue - firstWealthValue;
     final totalWealthChangePct = (totalWealthChange / firstWealthValue) * 100;
 
@@ -917,7 +1076,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        NumberFormat.currency(locale: 'en_US', symbol: 'Ft ', decimalDigits: 0)
+                        NumberFormat.currency(
+                                locale: 'en_US',
+                                symbol: 'Ft ',
+                                decimalDigits: 0)
                             .format(lastWealthValue),
                         style: const TextStyle(
                           fontSize: 18,
@@ -930,7 +1092,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         '${totalWealthChangePct >= 0 ? '+' : ''}${totalWealthChangePct.toStringAsFixed(1)}% total',
                         style: TextStyle(
                           fontSize: 12,
-                          color: totalWealthChangePct >= 0 ? Colors.greenAccent : Colors.redAccent,
+                          color: totalWealthChangePct >= 0
+                              ? Colors.greenAccent
+                              : Colors.redAccent,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -951,7 +1115,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        NumberFormat.currency(locale: 'en_US', symbol: 'Ft ', decimalDigits: 0)
+                        NumberFormat.currency(
+                                locale: 'en_US',
+                                symbol: 'Ft ',
+                                decimalDigits: 0)
                             .format(lastPortfolioValue),
                         style: const TextStyle(
                           fontSize: 18,
@@ -964,7 +1131,9 @@ class _TrendsScreenState extends State<TrendsScreen> {
                         '${totalPortfolioChangePct >= 0 ? '+' : ''}${totalPortfolioChangePct.toStringAsFixed(1)}% total',
                         style: TextStyle(
                           fontSize: 12,
-                          color: totalPortfolioChangePct >= 0 ? Colors.greenAccent : Colors.redAccent,
+                          color: totalPortfolioChangePct >= 0
+                              ? Colors.greenAccent
+                              : Colors.redAccent,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
