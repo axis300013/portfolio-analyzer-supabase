@@ -13,6 +13,9 @@ from .fetch_alfa_pension import fetch_alfa_pension_balance
 
 load_dotenv()
 
+# Detect cloud environment
+IS_CLOUD = os.getenv('RAILWAY_ENVIRONMENT') == 'production'
+
 # Initialize database connection
 database_url = os.getenv('DATABASE_URL')
 engine = create_engine(database_url)
@@ -108,8 +111,12 @@ class HorizontPensionFetcher(WealthFetcher):
     
     def fetch_and_save(self):
         """Fetch Horizont pension balance and save to database"""
+        if IS_CLOUD:
+            print("  [SKIP] Skipping Horizont fetch in cloud environment (Selenium not available)")
+            return False
+        
         if not self.username or not self.password:
-            print("  ⚠ Horizont credentials not found in .env - skipping")
+            print("  [SKIP] Horizont credentials not found in .env - skipping")
             return False
         
         print(f"  Fetching {self.category_name}...")
@@ -121,7 +128,7 @@ class HorizontPensionFetcher(WealthFetcher):
         )
         
         if error:
-            print(f"  ✗ Failed to fetch {self.category_name}: {error}")
+            print(f"  [ERROR] Failed to fetch {self.category_name}: {error}")
             return False
         
         # Save to database
@@ -141,8 +148,12 @@ class AlfaPensionFetcher(WealthFetcher):
     
     def fetch_and_save(self):
         """Fetch Alfa pension balance and save to database"""
+        if IS_CLOUD:
+            print("  [SKIP] Skipping Alfa fetch in cloud environment (Selenium not available)")
+            return False
+        
         if not self.username or not self.password:
-            print("  ⚠ Alfa credentials not found in .env - skipping")
+            print("  [SKIP] Alfa credentials not found in .env - skipping")
             return False
         
         print(f"  Fetching {self.category_name}...")
@@ -154,7 +165,7 @@ class AlfaPensionFetcher(WealthFetcher):
         )
         
         if error:
-            print(f"  ✗ Failed to fetch {self.category_name}: {error}")
+            print(f"  [ERROR] Failed to fetch {self.category_name}: {error}")
             return False
         
         # Save to database

@@ -1,0 +1,12 @@
+.venv/
+ui/
+mobile/
+tests/
+archive/
+mobile_builds/
+data/
+docs/
+*.md
+*.bat
+*.ps1
+.git/
