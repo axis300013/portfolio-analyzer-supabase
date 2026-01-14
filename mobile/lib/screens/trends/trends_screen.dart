@@ -167,18 +167,12 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     children: [
                       _buildPeriodSelector(),
                       const SizedBox(height: 16),
+                      _buildOverallStatistics(),
+                      const SizedBox(height: 24),
+                      _buildStatisticsCards(),
+                      const SizedBox(height: 24),
                       const Text(
-                        'Portfolio Value Over Time',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildPortfolioChart(),
-                      const SizedBox(height: 32),
-                      const Text(
-                        'Net Wealth Over Time',
+                        '1. Net Wealth Over Time',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -186,42 +180,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       ),
                       const SizedBox(height: 16),
                       _buildWealthChart(),
+                      const SizedBox(height: 8),
+                      _buildWealthDetailTable(),
                       const SizedBox(height: 32),
                       const Text(
-                        'Portfolio YoY % Change',
+                        '2. Portfolio Value Over Time',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Year-over-year percentage change (Dec-to-Dec)',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
                       const SizedBox(height: 16),
-                      _buildPortfolioYoYChart(),
-                      const SizedBox(height: 32),
-                      const Text(
-                        'Net Wealth YoY % Change',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                      _buildPortfolioChart(),
                       const SizedBox(height: 8),
-                      const Text(
-                        'Year-over-year percentage change (Dec-to-Dec)',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildWealthYoYChart(),
+                      _buildPortfolioDetailTable(),
                     ],
                   ),
                 ),
@@ -324,6 +296,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
       return FlSpot(entry.key.toDouble(), dateValues[entry.value]!);
     }).toList();
 
+    // Calculate Y-axis range with 5% margin
+    final values = dateValues.values.toList();
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final margin = (maxValue - minValue) * 0.05;
+    final double yMin = ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
+    final double yMax = (maxValue + margin).toDouble();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -331,7 +311,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
           height: 250,
           child: LineChart(
             LineChartData(
-              minY: 0,
+              minY: yMin,
+              maxY: yMax,
               gridData: const FlGridData(show: true),
               titlesData: FlTitlesData(
                 leftTitles: AxisTitles(
@@ -435,6 +416,14 @@ class _TrendsScreenState extends State<TrendsScreen> {
       return FlSpot(entry.key.toDouble(), dateValues[entry.value]!);
     }).toList();
 
+    // Calculate Y-axis range with 5% margin
+    final values = dateValues.values.toList();
+    final minValue = values.reduce((a, b) => a < b ? a : b);
+    final maxValue = values.reduce((a, b) => a > b ? a : b);
+    final margin = (maxValue - minValue) * 0.05;
+    final double yMin = ((minValue - margin).clamp(0.0, double.infinity)).toDouble();
+    final double yMax = (maxValue + margin).toDouble();
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -442,7 +431,8 @@ class _TrendsScreenState extends State<TrendsScreen> {
           height: 250,
           child: LineChart(
             LineChartData(
-              minY: 0,
+              minY: yMin,
+              maxY: yMax,
               gridData: const FlGridData(show: true),
               titlesData: FlTitlesData(
                 leftTitles: AxisTitles(
@@ -838,6 +828,585 @@ class _TrendsScreenState extends State<TrendsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildOverallStatistics() {
+    if (_portfolioSnapshots.isEmpty || _wealthSnapshots.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Filter by selected period
+    final startDate = _getStartDate(_selectedPeriod);
+
+    // Aggregate portfolio values by date (filtered)
+    final Map<String, double> portfolioByDate = {};
+    for (final snapshot in _portfolioSnapshots) {
+      final dateStr = snapshot['snapshot_date'] as String;
+      final date = DateTime.parse(dateStr);
+      if (date.isBefore(startDate)) continue;
+      
+      final value = ((snapshot['value_huf'] ?? 0) as num).toDouble();
+      portfolioByDate[dateStr] = (portfolioByDate[dateStr] ?? 0) + value;
+    }
+
+    // Aggregate wealth values by date (filtered)
+    final Map<String, double> wealthByDate = {};
+    for (final snapshot in _wealthSnapshots) {
+      final dateStr = snapshot['snapshot_date'] as String;
+      final date = DateTime.parse(dateStr);
+      if (date.isBefore(startDate)) continue;
+      
+      final value = ((snapshot['net_wealth_huf'] ?? 0) as num).toDouble();
+      wealthByDate[dateStr] = (wealthByDate[dateStr] ?? 0) + value;
+    }
+
+    if (portfolioByDate.isEmpty || wealthByDate.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    // Get first and last values for the selected period
+    final portfolioDates = portfolioByDate.keys.toList()..sort();
+    final wealthDates = wealthByDate.keys.toList()..sort();
+    
+    final firstPortfolioValue = portfolioByDate[portfolioDates.first] ?? 0.0;
+    final lastPortfolioValue = portfolioByDate[portfolioDates.last] ?? 0.0;
+    final firstWealthValue = wealthByDate[wealthDates.first] ?? 0.0;
+    final lastWealthValue = wealthByDate[wealthDates.last] ?? 0.0;
+
+    if (firstPortfolioValue == 0.0 || lastPortfolioValue == 0.0 || 
+        firstWealthValue == 0.0 || lastWealthValue == 0.0) {
+      return const SizedBox.shrink();
+    }
+
+    final totalPortfolioChange = lastPortfolioValue - firstPortfolioValue;
+    final totalPortfolioChangePct = (totalPortfolioChange / firstPortfolioValue) * 100;
+    final totalWealthChange = lastWealthValue - firstWealthValue;
+    final totalWealthChangePct = (totalWealthChange / firstWealthValue) * 100;
+
+    return Card(
+      elevation: 4,
+      color: Colors.blue[900]?.withOpacity(0.3),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Overall Statistics ($_selectedPeriod)',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Net Wealth',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        NumberFormat.currency(locale: 'en_US', symbol: 'Ft ', decimalDigits: 0)
+                            .format(lastWealthValue),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${totalWealthChangePct >= 0 ? '+' : ''}${totalWealthChangePct.toStringAsFixed(1)}% total',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: totalWealthChangePct >= 0 ? Colors.greenAccent : Colors.redAccent,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Portfolio Value',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        NumberFormat.currency(locale: 'en_US', symbol: 'Ft ', decimalDigits: 0)
+                            .format(lastPortfolioValue),
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${totalPortfolioChangePct >= 0 ? '+' : ''}${totalPortfolioChangePct.toStringAsFixed(1)}% total',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: totalPortfolioChangePct >= 0 ? Colors.greenAccent : Colors.redAccent,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Data Points',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${wealthDates.length} snapshots',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Portfolio/Wealth',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(lastPortfolioValue / lastWealthValue * 100).toStringAsFixed(1)}%',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatisticsCards() {
+    // Filter data based on selected period
+    final startDate = _getStartDate(_selectedPeriod);
+    final filteredPortfolio = _portfolioSnapshots.where((item) {
+      final date = DateTime.parse(item['snapshot_date'] as String);
+      return date.isAfter(startDate);
+    }).toList();
+    final filteredWealth = _wealthSnapshots.where((item) {
+      final date = DateTime.parse(item['snapshot_date'] as String);
+      return date.isAfter(startDate);
+    }).toList();
+
+    if (filteredPortfolio.isEmpty || filteredWealth.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final firstPortfolio = filteredPortfolio.first;
+    final lastPortfolio = filteredPortfolio.last;
+    final firstWealth = filteredWealth.first;
+    final lastWealth = filteredWealth.last;
+
+    // Safely extract values with null checks
+    final firstPortfolioValue =
+        (firstPortfolio['portfolio_value'] as num?)?.toDouble() ?? 0.0;
+    final lastPortfolioValue =
+        (lastPortfolio['portfolio_value'] as num?)?.toDouble() ?? 0.0;
+    final firstWealthValue =
+        (firstWealth['net_wealth'] as num?)?.toDouble() ?? 0.0;
+    final lastWealthValue =
+        (lastWealth['net_wealth'] as num?)?.toDouble() ?? 0.0;
+
+    // Return empty if we don't have valid data
+    if (firstPortfolioValue == 0.0 ||
+        lastPortfolioValue == 0.0 ||
+        firstWealthValue == 0.0 ||
+        lastWealthValue == 0.0) {
+      return const SizedBox.shrink();
+    }
+
+    final portfolioChange = lastPortfolioValue - firstPortfolioValue;
+    final portfolioChangePct = (portfolioChange / firstPortfolioValue) * 100;
+
+    final wealthChange = lastWealthValue - firstWealthValue;
+    final wealthChangePct = (wealthChange / firstWealthValue) * 100;
+
+    final portfolioOfWealth = (lastPortfolioValue / lastWealthValue) * 100;
+
+    return Column(
+      children: [
+        // Net Wealth Metrics Card
+        Card(
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Net Wealth Analytics',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: _buildMetricItem(
+                        'Current Value',
+                        NumberFormat.currency(
+                                locale: 'en_US', symbol: '', decimalDigits: 0)
+                            .format(lastWealthValue),
+                        wealthChangePct >= 0 ? Colors.green : Colors.red,
+                        '${wealthChangePct >= 0 ? '+' : ''}${wealthChangePct.toStringAsFixed(1)}%',
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildMetricItem(
+                        'Period Change',
+                        NumberFormat.currency(
+                                locale: 'en_US', symbol: '', decimalDigits: 0)
+                            .format(wealthChange),
+                        wealthChangePct >= 0 ? Colors.green : Colors.red,
+                        null,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildMetricItem(
+                        'Data Points',
+                        '${filteredWealth.length}',
+                        Colors.blue,
+                        null,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Portfolio Metrics Card
+        Card(
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Portfolio Analytics',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: _buildMetricItem(
+                        'Current Value',
+                        NumberFormat.currency(
+                                locale: 'en_US', symbol: '', decimalDigits: 0)
+                            .format(lastPortfolioValue),
+                        portfolioChangePct >= 0 ? Colors.green : Colors.red,
+                        '${portfolioChangePct >= 0 ? '+' : ''}${portfolioChangePct.toStringAsFixed(1)}%',
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildMetricItem(
+                        'Period Change',
+                        NumberFormat.currency(
+                                locale: 'en_US', symbol: '', decimalDigits: 0)
+                            .format(portfolioChange),
+                        portfolioChangePct >= 0 ? Colors.green : Colors.red,
+                        null,
+                      ),
+                    ),
+                    Expanded(
+                      child: _buildMetricItem(
+                        '% of Net Wealth',
+                        '${portfolioOfWealth.toStringAsFixed(1)}%',
+                        Colors.blue,
+                        null,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMetricItem(
+      String label, String value, Color valueColor, String? subtitle) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: Colors.grey,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: valueColor,
+          ),
+        ),
+        if (subtitle != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 11,
+              color: valueColor,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildWealthDetailTable() {
+    // Filter data based on selected period
+    final startDate = _getStartDate(_selectedPeriod);
+    final filteredWealth = _wealthSnapshots.where((item) {
+      final date = DateTime.parse(item['snapshot_date'] as String);
+      return date.isAfter(startDate);
+    }).toList();
+
+    if (filteredWealth.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ExpansionTile(
+      title: const Text(
+        'Show Detailed Data',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columnSpacing: 20,
+            horizontalMargin: 16,
+            columns: const [
+              DataColumn(
+                  label: Text('Date',
+                      style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(
+                  label: Text('Net Wealth',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+              DataColumn(
+                  label: Text('Change',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+              DataColumn(
+                  label: Text('% Change',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+            ],
+            rows: List.generate(filteredWealth.length, (index) {
+              final item = filteredWealth[index];
+              final currentValue =
+                  (item['net_wealth'] as num?)?.toDouble() ?? 0.0;
+              final prevValue = index > 0
+                  ? ((filteredWealth[index - 1]['net_wealth'] as num?)
+                          ?.toDouble() ??
+                      0.0)
+                  : currentValue;
+              final change = currentValue - prevValue;
+              final changePct =
+                  prevValue != 0 ? (change / prevValue) * 100 : 0.0;
+
+              return DataRow(
+                cells: [
+                  DataCell(Text(
+                    DateFormat('yyyy-MM-dd').format(
+                        DateTime.parse(item['snapshot_date'] as String)),
+                    style: const TextStyle(fontSize: 12),
+                  )),
+                  DataCell(Text(
+                    NumberFormat.currency(
+                            locale: 'en_US', symbol: '', decimalDigits: 0)
+                        .format(currentValue),
+                    style: const TextStyle(fontSize: 12),
+                  )),
+                  DataCell(Text(
+                    NumberFormat.currency(
+                            locale: 'en_US', symbol: '', decimalDigits: 0)
+                        .format(change),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: change >= 0 ? Colors.green : Colors.red,
+                    ),
+                  )),
+                  DataCell(Text(
+                    '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: changePct >= 0 ? Colors.green : Colors.red,
+                    ),
+                  )),
+                ],
+              );
+            }),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPortfolioDetailTable() {
+    // Filter data based on selected period
+    final startDate = _getStartDate(_selectedPeriod);
+    final filteredPortfolio = _portfolioSnapshots.where((item) {
+      final date = DateTime.parse(item['snapshot_date'] as String);
+      return date.isAfter(startDate);
+    }).toList();
+
+    if (filteredPortfolio.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return ExpansionTile(
+      title: const Text(
+        'Show Detailed Data',
+        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columnSpacing: 20,
+            horizontalMargin: 16,
+            columns: const [
+              DataColumn(
+                  label: Text('Date',
+                      style: TextStyle(fontWeight: FontWeight.bold))),
+              DataColumn(
+                  label: Text('Portfolio Value',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+              DataColumn(
+                  label: Text('Change',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+              DataColumn(
+                  label: Text('% Change',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  numeric: true),
+            ],
+            rows: List.generate(filteredPortfolio.length, (index) {
+              final item = filteredPortfolio[index];
+              final currentValue =
+                  (item['portfolio_value'] as num?)?.toDouble() ?? 0.0;
+              final prevValue = index > 0
+                  ? ((filteredPortfolio[index - 1]['portfolio_value'] as num?)
+                          ?.toDouble() ??
+                      0.0)
+                  : currentValue;
+              final change = currentValue - prevValue;
+              final changePct =
+                  prevValue != 0 ? (change / prevValue) * 100 : 0.0;
+
+              return DataRow(
+                cells: [
+                  DataCell(Text(
+                    DateFormat('yyyy-MM-dd').format(
+                        DateTime.parse(item['snapshot_date'] as String)),
+                    style: const TextStyle(fontSize: 12),
+                  )),
+                  DataCell(Text(
+                    NumberFormat.currency(
+                            locale: 'en_US', symbol: '', decimalDigits: 0)
+                        .format(currentValue),
+                    style: const TextStyle(fontSize: 12),
+                  )),
+                  DataCell(Text(
+                    NumberFormat.currency(
+                            locale: 'en_US', symbol: '', decimalDigits: 0)
+                        .format(change),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: change >= 0 ? Colors.green : Colors.red,
+                    ),
+                  )),
+                  DataCell(Text(
+                    '${changePct >= 0 ? '+' : ''}${changePct.toStringAsFixed(2)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: changePct >= 0 ? Colors.green : Colors.red,
+                    ),
+                  )),
+                ],
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 }

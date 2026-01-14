@@ -845,22 +845,31 @@ with tab3:
                 latest = df_combined.iloc[-1]
                 first = df_combined.iloc[0]
                 
+                # Portfolio metrics
                 portfolio_change = latest['portfolio_value_huf'] - first['portfolio_value_huf']
                 portfolio_change_pct = (portfolio_change / first['portfolio_value_huf']) * 100 if first['portfolio_value_huf'] != 0 else 0
                 
+                # Net wealth metrics
+                net_wealth_change = latest['net_wealth_huf'] - first['net_wealth_huf']
+                net_wealth_change_pct = (net_wealth_change / first['net_wealth_huf']) * 100 if first['net_wealth_huf'] != 0 else 0
+                
+                # NET WEALTH METRICS (top row)
+                st.markdown("**Net Wealth Metrics:**")
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
                     st.metric(
-                        "Current Portfolio Value",
-                        f"{latest['portfolio_value_huf']:,.0f} HUF"
+                        "Current Net Wealth",
+                        f"{latest['net_wealth_huf']:,.0f} HUF",
+                        f"{net_wealth_change_pct:+.2f}%",
+                        delta_color="normal"
                     )
                 
                 with col2:
                     st.metric(
-                        "Period Change",
-                        f"{portfolio_change:+,.0f} HUF",
-                        f"{portfolio_change_pct:+.2f}%"
+                        "Net Wealth Period Change",
+                        f"{net_wealth_change:+,.0f} HUF",
+                        f"{net_wealth_change_pct:+.2f}%"
                     )
                 
                 with col3:
@@ -869,41 +878,49 @@ with tab3:
                         len(df_combined)
                     )
                 
+                # PORTFOLIO METRICS (middle row)
+                st.markdown("**Portfolio Metrics:**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.metric(
+                        "Current Portfolio Value",
+                        f"{latest['portfolio_value_huf']:,.0f} HUF",
+                        f"{portfolio_change_pct:+.2f}%",
+                        delta_color="normal"
+                    )
+                
+                with col2:
+                    st.metric(
+                        "Portfolio Period Change",
+                        f"{portfolio_change:+,.0f} HUF",
+                        f"{portfolio_change_pct:+.2f}%"
+                    )
+                
+                with col3:
+                    st.metric(
+                        "Portfolio vs Net Wealth",
+                        f"{(latest['portfolio_value_huf'] / latest['net_wealth_huf'] * 100):.1f}%",
+                        help="Portfolio as % of total net wealth"
+                    )
+                
                 st.markdown("---")
                 
-                # Portfolio value trend (primary chart)
-                st.markdown(f"#### Portfolio Value Trend ({granularity})")
+                # Helper function to get optimal y-axis range (with 5% margin)
+                def get_y_range(values):
+                    """Calculate y-axis range with 5% margin above and below min/max"""
+                    min_val = values.min()
+                    max_val = values.max()
+                    margin = (max_val - min_val) * 0.05
+                    return [min_val - margin, max_val + margin]
                 
-                fig_portfolio = go.Figure()
-                
-                fig_portfolio.add_trace(go.Scatter(
-                    x=df_combined['snapshot_date'],
-                    y=df_combined['portfolio_value_huf'],
-                    mode='lines+markers+text',
-                    name='Portfolio Value',
-                    line=dict(color='#1976D2', width=3),
-                    marker=dict(size=6),
-                    text=[f"{val/1_000_000:.1f}M" if val >= 1_000_000 else f"{val/1_000:.0f}K" for val in df_combined['portfolio_value_huf']],
-                    textposition="top center",
-                    textfont=dict(size=9, color='#1976D2'),
-                    fill='tozeroy',
-                    fillcolor='rgba(25, 118, 210, 0.1)',
-                    hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Portfolio: %{y:,.0f} HUF<extra></extra>'
-                ))
-                
-                fig_portfolio.update_layout(
-                    xaxis_title="Date",
-                    yaxis_title="Portfolio Value (HUF)",
-                    hovermode='x unified',
-                    height=400
-                )
-                
-                st.plotly_chart(fig_portfolio, use_container_width=True)
-                
-                # Net wealth trend (always show)
-                st.markdown(f"#### Net Wealth Over Time ({granularity})")
+                # GRAPH 1: Net Wealth Over Time (Combined - shown FIRST)
+                st.markdown(f"#### 1. Net Wealth Over Time ({granularity}) - Combined View")
                 
                 fig_net = go.Figure()
+                
+                # Calculate net wealth range for optimal scaling
+                net_y_range = get_y_range(df_combined['net_wealth_huf'])
                 
                 fig_net.add_trace(go.Scatter(
                     x=df_combined['snapshot_date'],
@@ -923,116 +940,329 @@ with tab3:
                 fig_net.update_layout(
                     xaxis_title="Date",
                     yaxis_title="Net Wealth (HUF)",
+                    yaxis=dict(range=net_y_range),
                     hovermode='x unified',
                     height=400
                 )
                 
                 st.plotly_chart(fig_net, use_container_width=True)
                 
-                # Component breakdown - show portfolio vs other wealth
-                st.markdown(f"#### All Wealth Components Over Time ({granularity})")
+                # Detailed table for Net Wealth
+                with st.expander(f"📋 Net Wealth Details - Item Level ({granularity})"):
+                    df_net_detail = df_combined[['snapshot_date', 'net_wealth_huf']].copy()
+                    
+                    # Add components if available
+                    if 'portfolio_value_huf' in df_combined.columns:
+                        df_net_detail['Portfolio'] = df_combined['portfolio_value_huf']
+                    if 'cash_huf' in df_combined.columns:
+                        df_net_detail['Cash'] = df_combined['cash_huf']
+                    if 'property_huf' in df_combined.columns:
+                        df_net_detail['Property'] = df_combined['property_huf']
+                    if 'pension_huf' in df_combined.columns:
+                        df_net_detail['Pension'] = df_combined['pension_huf']
+                    if 'loans_huf' in df_combined.columns:
+                        df_net_detail['Liabilities'] = df_combined['loans_huf']
+                    
+                    # Format columns
+                    df_net_display = df_net_detail.copy()
+                    df_net_display['snapshot_date'] = df_net_display['snapshot_date'].dt.strftime('%Y-%m-%d')
+                    
+                    # Format all numeric columns
+                    for col in df_net_display.columns[1:]:
+                        if col in df_net_display.columns:
+                            df_net_display[col] = df_net_display[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "-")
+                    
+                    df_net_display.columns = ['Date'] + list(df_net_display.columns[1:])
+                    
+                    st.dataframe(df_net_display, use_container_width=True, hide_index=True)
                 
-                # Calculate other assets for all days (using latest values)
-                if latest_other_assets > 0:
-                    df_combined['other_assets_huf'] = latest_other_assets
-                else:
-                    df_combined['other_assets_huf'] = df_combined['net_wealth_huf'] - df_combined['portfolio_value_huf']
+                # GRAPH 2: Portfolio Value Trend (shown SECOND)
+                st.markdown(f"#### 2. Portfolio Value Trend ({granularity})")
                 
-                fig2 = go.Figure()
+                fig_portfolio = go.Figure()
                 
-                # Portfolio (bottom layer)
-                fig2.add_trace(go.Scatter(
+                # Calculate portfolio value range for optimal scaling
+                port_y_range = get_y_range(df_combined['portfolio_value_huf'])
+                
+                fig_portfolio.add_trace(go.Scatter(
                     x=df_combined['snapshot_date'],
                     y=df_combined['portfolio_value_huf'],
-                    name='Portfolio',
-                    mode='lines',
-                    line=dict(width=0.5, color='#1976D2'),
-                    stackgroup='one',
-                    fillcolor='rgba(25, 118, 210, 0.7)',
+                    mode='lines+markers+text',
+                    name='Portfolio Value',
+                    line=dict(color='#1976D2', width=3),
+                    marker=dict(size=6),
+                    text=[f"{val/1_000_000:.1f}M" if val >= 1_000_000 else f"{val/1_000:.0f}K" for val in df_combined['portfolio_value_huf']],
+                    textposition="top center",
+                    textfont=dict(size=9, color='#1976D2'),
+                    fill='tozeroy',
+                    fillcolor='rgba(25, 118, 210, 0.1)',
                     hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Portfolio: %{y:,.0f} HUF<extra></extra>'
                 ))
                 
-                # Other Assets (top layer)
-                fig2.add_trace(go.Scatter(
-                    x=df_combined['snapshot_date'],
-                    y=df_combined['other_assets_huf'],
-                    name='Other Assets (Cash, Property, Pensions)',
-                    mode='lines',
-                    line=dict(width=0.5, color='#388E3C'),
-                    stackgroup='one',
-                    fillcolor='rgba(56, 142, 60, 0.7)',
-                    hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Other Assets: %{y:,.0f} HUF<extra></extra>'
-                ))
-                
-                fig2.update_layout(
+                fig_portfolio.update_layout(
                     xaxis_title="Date",
-                    yaxis_title="Value (HUF)",
+                    yaxis_title="Portfolio Value (HUF)",
+                    yaxis=dict(range=port_y_range),
                     hovermode='x unified',
-                    height=400,
-                    showlegend=True,
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
-                    )
+                    height=400
                 )
                 
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig_portfolio, use_container_width=True)
                 
-                # If we have detailed wealth snapshots, show detailed breakdown too
-                if 'cash_huf' in df_combined.columns and df_combined['cash_huf'].notna().any():
-                    st.markdown(f"#### Detailed Wealth Breakdown - Snapshot Days Only ({granularity})")
-                    st.info(f"💡 This chart shows detailed breakdown of Cash, Property, and Pensions on days when you save wealth snapshots, aggregated by {granularity.lower()} period.")
+                # Detailed table for Portfolio Value
+                with st.expander(f"📋 Portfolio Value Details - Item Level ({granularity})"):
+                    df_port_detail = df_combined[['snapshot_date', 'portfolio_value_huf']].copy()
+                    df_port_detail.columns = ['Date', 'Portfolio Value (HUF)']
                     
-                    df_wealth = df_combined[df_combined['cash_huf'].notna()]
+                    # Format for display
+                    df_port_display = df_port_detail.copy()
+                    df_port_display['Date'] = df_port_display['Date'].dt.strftime('%Y-%m-%d')
+                    df_port_display['Portfolio Value (HUF)'] = df_port_display['Portfolio Value (HUF)'].apply(lambda x: f"{x:,.0f}")
+                    
+                    st.dataframe(df_port_display, use_container_width=True, hide_index=True)
+                
+                # GRAPH 3: Wealth Details (Individual Components as Line Chart)
+                st.markdown(f"#### 3. Wealth Components - Individual Trends ({granularity})")
+                st.info("💡 This chart shows individual trend lines for each wealth component.")
+                
+                # If we have detailed wealth snapshots, show detailed breakdown
+                if 'cash_huf' in df_combined.columns and df_combined['cash_huf'].notna().any():
+                    df_wealth = df_combined[df_combined['cash_huf'].notna()].copy()
                     
                     if not df_wealth.empty:
                         fig3 = go.Figure()
                         
+                        # Add individual line traces (NOT stacked)
                         fig3.add_trace(go.Scatter(
                             x=df_wealth['snapshot_date'],
                             y=df_wealth['portfolio_value_huf'],
                             name='Portfolio',
-                            stackgroup='one',
-                            fillcolor='#1976D2'
+                            mode='lines+markers',
+                            line=dict(color='#1976D2', width=2),
+                            marker=dict(size=4),
+                            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Portfolio: %{y:,.0f} HUF<extra></extra>'
                         ))
                         
                         fig3.add_trace(go.Scatter(
                             x=df_wealth['snapshot_date'],
                             y=df_wealth['cash_huf'],
                             name='Cash',
-                            stackgroup='one',
-                            fillcolor='#388E3C'
+                            mode='lines+markers',
+                            line=dict(color='#388E3C', width=2),
+                            marker=dict(size=4),
+                            hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Cash: %{y:,.0f} HUF<extra></extra>'
                         ))
                         
-                        if 'property_huf' in df_wealth.columns:
+                        if 'property_huf' in df_wealth.columns and df_wealth['property_huf'].notna().any():
                             fig3.add_trace(go.Scatter(
                                 x=df_wealth['snapshot_date'],
                                 y=df_wealth['property_huf'],
                                 name='Property',
-                                stackgroup='one',
-                                fillcolor='#F57C00'
+                                mode='lines+markers',
+                                line=dict(color='#F57C00', width=2),
+                                marker=dict(size=4),
+                                hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Property: %{y:,.0f} HUF<extra></extra>'
                             ))
                         
-                        if 'pension_huf' in df_wealth.columns:
+                        if 'pension_huf' in df_wealth.columns and df_wealth['pension_huf'].notna().any():
                             fig3.add_trace(go.Scatter(
                                 x=df_wealth['snapshot_date'],
                                 y=df_wealth['pension_huf'],
                                 name='Pension',
-                                stackgroup='one',
-                                fillcolor='#7B1FA2'
+                                mode='lines+markers',
+                                line=dict(color='#7B1FA2', width=2),
+                                marker=dict(size=4),
+                                hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Pension: %{y:,.0f} HUF<extra></extra>'
                             ))
+                        
+                        if 'loans_huf' in df_wealth.columns and df_wealth['loans_huf'].notna().any():
+                            fig3.add_trace(go.Scatter(
+                                x=df_wealth['snapshot_date'],
+                                y=df_wealth['loans_huf'],
+                                name='Liabilities (Loans)',
+                                mode='lines+markers',
+                                line=dict(color='#D32F2F', width=2, dash='dash'),
+                                marker=dict(size=4),
+                                hovertemplate='<b>%{x|%Y-%m-%d}</b><br>Liabilities: %{y:,.0f} HUF<extra></extra>'
+                            ))
+                        
+                        # Calculate range including all components
+                        all_values = [df_wealth['portfolio_value_huf'], df_wealth['cash_huf']]
+                        if 'property_huf' in df_wealth.columns:
+                            all_values.append(df_wealth['property_huf'])
+                        if 'pension_huf' in df_wealth.columns:
+                            all_values.append(df_wealth['pension_huf'])
+                        if 'loans_huf' in df_wealth.columns:
+                            all_values.append(df_wealth['loans_huf'])
+                        
+                        combined_series = pd.concat(all_values)
+                        detail_y_range = get_y_range(combined_series)
                         
                         fig3.update_layout(
                             xaxis_title="Date",
                             yaxis_title="Value (HUF)",
+                            yaxis=dict(range=detail_y_range),
                             hovermode='x unified',
-                            height=400
+                            height=400,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="h",
+                                yanchor="bottom",
+                                y=1.02,
+                                xanchor="right",
+                                x=1
+                            )
                         )
                         
                         st.plotly_chart(fig3, use_container_width=True)
+                        
+                        # Add detail table for Graph 3
+                        with st.expander(f"📋 Wealth Components Details - Item Level ({granularity})"):
+                            df_comp_detail = df_wealth[['snapshot_date']].copy()
+                            if 'portfolio_value_huf' in df_wealth.columns:
+                                df_comp_detail['Portfolio'] = df_wealth['portfolio_value_huf']
+                            if 'cash_huf' in df_wealth.columns:
+                                df_comp_detail['Cash'] = df_wealth['cash_huf']
+                            if 'property_huf' in df_wealth.columns:
+                                df_comp_detail['Property'] = df_wealth['property_huf']
+                            if 'pension_huf' in df_wealth.columns:
+                                df_comp_detail['Pension'] = df_wealth['pension_huf']
+                            if 'loans_huf' in df_wealth.columns:
+                                df_comp_detail['Liabilities'] = df_wealth['loans_huf']
+                            
+                            # Format for display
+                            df_comp_display = df_comp_detail.copy()
+                            df_comp_display['snapshot_date'] = df_comp_display['snapshot_date'].dt.strftime('%Y-%m-%d')
+                            for col in df_comp_display.columns[1:]:
+                                df_comp_display[col] = df_comp_display[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "-")
+                            df_comp_display.columns = ['Date'] + list(df_comp_display.columns[1:])
+                            
+                            st.dataframe(df_comp_display, use_container_width=True, hide_index=True)
+                else:
+                    st.warning("No detailed wealth snapshot data available yet. Save wealth snapshots to see the detailed breakdown.")
+                
+                # GRAPH 4: Portfolio Detail - Individual Instruments
+                st.markdown(f"#### 4. Portfolio Detail - Individual Instruments ({granularity})")
+                st.info("💡 Shows individual trend lines for each instrument in your portfolio (where data exists in the period).")
+                
+                # Get instrument-level detail from portfolio_data (already fetched earlier)
+                if portfolio_data:
+                    df_instruments = pd.DataFrame(portfolio_data)
+                    df_instruments['date'] = pd.to_datetime(df_instruments['date'])
+                    
+                    # Get unique instruments
+                    instruments = df_instruments['instrument_name'].unique()
+                    
+                    # Filter option for instruments (show top 10 by latest value)
+                    latest_date = df_instruments['date'].max()
+                    latest_values = df_instruments[df_instruments['date'] == latest_date].groupby('instrument_name')['value_huf'].sum().sort_values(ascending=False)
+                    top_instruments = latest_values.head(10).index.tolist()
+                    
+                    # Create instrument filter
+                    col_filter1, col_filter2 = st.columns([3, 1])
+                    with col_filter1:
+                        show_all = st.checkbox("Show all instruments", value=False, key="show_all_instruments")
+                    with col_filter2:
+                        st.metric("Total Instruments", len(instruments))
+                    
+                    # Determine which instruments to display
+                    if show_all:
+                        instruments_to_show = instruments
+                    else:
+                        instruments_to_show = top_instruments
+                        if len(instruments) > 10:
+                            st.info(f"Showing top 10 instruments by value (out of {len(instruments)} total). Check 'Show all instruments' to see all.")
+                    
+                    # Create figure
+                    fig4 = go.Figure()
+                    
+                    # Color palette for instruments
+                    colors = ['#1976D2', '#388E3C', '#F57C00', '#7B1FA2', '#D32F2F', 
+                             '#0288D1', '#689F38', '#FFA726', '#8E24AA', '#E53935',
+                             '#1565C0', '#558B2F', '#FB8C00', '#6A1B9A', '#C62828']
+                    
+                    # Aggregate by instrument and date
+                    df_inst_agg = df_instruments.groupby(['date', 'instrument_name']).agg({
+                        'value_huf': 'sum'
+                    }).reset_index()
+                    
+                    # Apply granularity aggregation
+                    all_instrument_data = []
+                    for idx, instrument in enumerate(instruments_to_show):
+                        df_inst = df_inst_agg[df_inst_agg['instrument_name'] == instrument].copy()
+                        df_inst.columns = ['snapshot_date', 'instrument_name', 'value_huf']
+                        
+                        # Apply granularity
+                        df_inst = aggregate_by_granularity(df_inst, 'snapshot_date', ['value_huf'], granularity)
+                        
+                        if not df_inst.empty:
+                            color = colors[idx % len(colors)]
+                            
+                            fig4.add_trace(go.Scatter(
+                                x=df_inst['snapshot_date'],
+                                y=df_inst['value_huf'],
+                                name=instrument[:30],  # Truncate long names
+                                mode='lines+markers',
+                                line=dict(color=color, width=2),
+                                marker=dict(size=4),
+                                hovertemplate=f'<b>%{{x|%Y-%m-%d}}</b><br>{instrument}: %{{y:,.0f}} HUF<extra></extra>'
+                            ))
+                            
+                            all_instrument_data.extend(df_inst['value_huf'].tolist())
+                    
+                    # Calculate range
+                    if all_instrument_data:
+                        inst_series = pd.Series(all_instrument_data)
+                        inst_y_range = get_y_range(inst_series)
+                        
+                        fig4.update_layout(
+                            xaxis_title="Date",
+                            yaxis_title="Value (HUF)",
+                            yaxis=dict(range=inst_y_range),
+                            hovermode='x unified',
+                            height=500,
+                            showlegend=True,
+                            legend=dict(
+                                orientation="v",
+                                yanchor="top",
+                                y=1,
+                                xanchor="left",
+                                x=1.01
+                            )
+                        )
+                        
+                        st.plotly_chart(fig4, use_container_width=True)
+                        
+                        # Add detail table for instruments
+                        with st.expander(f"📋 Portfolio Instruments Details - Item Level ({granularity})"):
+                            # Create pivot table: dates as rows, instruments as columns
+                            df_pivot = df_inst_agg.pivot_table(
+                                index='date',
+                                columns='instrument_name',
+                                values='value_huf',
+                                aggfunc='sum'
+                            ).reset_index()
+                            
+                            # Apply granularity to pivot table
+                            pivot_cols = [col for col in df_pivot.columns if col != 'date']
+                            df_pivot = df_pivot.rename(columns={'date': 'snapshot_date'})
+                            df_pivot = aggregate_by_granularity(df_pivot, 'snapshot_date', pivot_cols, granularity)
+                            
+                            # Format for display
+                            df_pivot_display = df_pivot.copy()
+                            df_pivot_display['snapshot_date'] = df_pivot_display['snapshot_date'].dt.strftime('%Y-%m-%d')
+                            
+                            # Format numeric columns
+                            for col in df_pivot_display.columns[1:]:
+                                df_pivot_display[col] = df_pivot_display[col].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "-")
+                            
+                            df_pivot_display.columns = ['Date'] + list(df_pivot_display.columns[1:])
+                            
+                            st.dataframe(df_pivot_display, use_container_width=True, hide_index=True, height=400)
+                    else:
+                        st.warning("No instrument data available for the selected period.")
+                else:
+                    st.warning("No portfolio data available for the selected period.")
             else:
                 st.info("No portfolio data found for selected period. Try running 'Daily Update' or check your date range.")
         else:
