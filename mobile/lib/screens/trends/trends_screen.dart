@@ -807,13 +807,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     getTitlesWidget: (value, meta) {
                       if (value.toInt() >= 0 && value.toInt() < years.length) {
                         final year = years[value.toInt()];
-                        // Get the date for this year from allSnapshots
-                        final snapshot = allSnapshots.firstWhere(
+                        // Get the date for this year from portfolio snapshots
+                        final snapshot = _portfolioSnapshots.firstWhere(
                           (s) =>
                               DateTime.parse(s['snapshot_date'] as String)
                                   .year ==
                               year,
-                          orElse: () => allSnapshots.first,
+                          orElse: () => _portfolioSnapshots.first,
                         );
                         final date =
                             DateTime.parse(snapshot['snapshot_date'] as String);
@@ -983,13 +983,13 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     getTitlesWidget: (value, meta) {
                       if (value.toInt() >= 0 && value.toInt() < years.length) {
                         final year = years[value.toInt()];
-                        // Get the date for this year from monthlySnapshots
-                        final snapshot = monthlySnapshots.firstWhere(
+                        // Get the date for this year from wealth snapshots
+                        final snapshot = _wealthSnapshots.firstWhere(
                           (s) =>
                               DateTime.parse(s['snapshot_date'] as String)
                                   .year ==
                               year,
-                          orElse: () => monthlySnapshots.first,
+                          orElse: () => _wealthSnapshots.first,
                         );
                         final date =
                             DateTime.parse(snapshot['snapshot_date'] as String);
