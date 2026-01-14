@@ -31,19 +31,23 @@ app.include_router(daily_update_router)
 async def startup_event():
     """Run automatic tasks on app startup"""
     try:
-        print("🔄 Checking automatic loan reductions on startup...")
-        db = next(get_db())
-        result = check_and_run_automatic_reductions(db)
-        if result["status"] == "completed":
-            print("✓ Automatic loan reductions completed on startup")
-        else:
-            print(f"ℹ Loan reductions: {result['message']}")
-        db.close()
-        print("✓ Startup event completed successfully")
+        print("[STARTUP] Checking automatic loan reductions on startup...")
+        try:
+            db = next(get_db())
+            result = check_and_run_automatic_reductions(db)
+            if result["status"] == "completed":
+                print("[STARTUP] Automatic loan reductions completed on startup")
+            else:
+                print(f"[STARTUP] Loan reductions: {result['message']}")
+            db.close()
+        except Exception as db_error:
+            print(f"[STARTUP] Skipping automatic loan reductions (database not ready): {db_error}")
+        print("[STARTUP] Startup event completed successfully")
     except Exception as e:
-        print(f"⚠ Error running automatic loan reductions: {e}")
+        print(f"[STARTUP] Error during startup event: {e}")
         import traceback
         traceback.print_exc()
+        # Don't crash the app - continue startup
 
 @app.get("/")
 def root():
