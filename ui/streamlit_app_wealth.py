@@ -1150,6 +1150,10 @@ with tab3:
                     df_instruments = pd.DataFrame(portfolio_data)
                     df_instruments['date'] = pd.to_datetime(df_instruments['date'])
                     
+                    # Rename 'name' to 'instrument_name' for consistency
+                    if 'name' in df_instruments.columns:
+                        df_instruments.rename(columns={'name': 'instrument_name'}, inplace=True)
+                    
                     # Get unique instruments
                     instruments = df_instruments['instrument_name'].unique()
                     

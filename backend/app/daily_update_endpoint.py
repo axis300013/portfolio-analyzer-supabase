@@ -102,33 +102,33 @@ async def _run_etl_pipeline():
         etl_script = current_dir / "etl" / "run_daily_etl.py"
         
         _update_status["current_step"] = "Running ETL pipeline..."
-        logger.info(f"🚀 Starting ETL pipeline from {etl_script}")
-        print(f"🚀 Starting ETL pipeline from {etl_script}", flush=True)
+        logger.info(f"[ETL] Starting ETL pipeline from {etl_script}")
+        print(f"[ETL] Starting ETL pipeline from {etl_script}", flush=True)
         
         # Run ETL as Python module (not subprocess)
         try:
             from .etl.run_daily_etl import run_daily_etl
-            logger.info("✅ Running ETL directly as module")
-            print("✅ Running ETL directly as module", flush=True)
+            logger.info("[ETL] Running ETL directly as module")
+            print("[ETL] Running ETL directly as module", flush=True)
             run_daily_etl()
             
             _update_status["is_running"] = False
             _update_status["last_completed"] = datetime.now().isoformat()
             _update_status["current_step"] = "Completed successfully"
             _update_status["last_error"] = None
-            logger.info("✅ ETL pipeline completed successfully")
-            print("✅ ETL pipeline completed successfully")
+            logger.info("[ETL] ETL pipeline completed successfully")
+            print("[ETL] ETL pipeline completed successfully")
             
         except Exception as etl_error:
-            logger.error(f"❌ ETL execution failed: {str(etl_error)}")
-            print(f"❌ ETL execution failed: {str(etl_error)}")
+            logger.error(f"[ETL] ETL execution failed: {str(etl_error)}")
+            print(f"[ETL] ETL execution failed: {str(etl_error)}")
             _update_status["is_running"] = False
             _update_status["last_error"] = str(etl_error)
             _update_status["current_step"] = f"Failed: {str(etl_error)[:200]}"
     
     except Exception as e:
-        logger.error(f"❌ Unexpected error: {str(e)}")
-        print(f"❌ Unexpected error: {str(e)}")
+        logger.error(f"[ETL] Unexpected error: {str(e)}")
+        print(f"[ETL] Unexpected error: {str(e)}")
         _update_status["is_running"] = False
         _update_status["last_error"] = str(e)
         _update_status["current_step"] = f"Error: {str(e)[:100]}"

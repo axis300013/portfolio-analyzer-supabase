@@ -72,7 +72,7 @@ class WealthFetcher:
                     {"value": float(value), "note": note, "id": existing[0]}
                 )
                 db.commit()
-                print(f"  ✓ Updated {self.category_name}: {value:,.0f} Ft (updated)")
+                print(f"  [OK] Updated {self.category_name}: {value:,.0f} Ft (updated)")
             else:
                 # Insert new value
                 db.execute(
@@ -89,7 +89,7 @@ class WealthFetcher:
                     }
                 )
                 db.commit()
-                print(f"  ✓ Saved {self.category_name}: {value:,.0f} Ft (new)")
+                print(f"  [OK] Saved {self.category_name}: {value:,.0f} Ft (new)")
         except Exception as e:
             db.rollback()
             raise e
@@ -203,7 +203,7 @@ def run_wealth_fetch():
             else:
                 failed_count += 1
         except Exception as e:
-            print(f"  ✗ Error with {fetcher_class.__name__}: {e}")
+            print(f"  [ERROR] Error with {fetcher_class.__name__}: {e}")
             failed_count += 1
     
     print(f"\nWealth Fetch Summary: {success_count} successful, {failed_count} failed")

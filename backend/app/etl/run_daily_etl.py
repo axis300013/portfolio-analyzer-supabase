@@ -49,9 +49,9 @@ def run_daily_etl():
             other_huf=wealth_data['breakdown'].get('other', 0.0)
         )
         
-        print(f"✅ Snapshot saved: {today} - Net Wealth: {snapshot.net_wealth_huf:,.0f} HUF")
+        print(f"[ETL] Snapshot saved: {today} - Net Wealth: {snapshot.net_wealth_huf:,.0f} HUF")
     except Exception as e:
-        print(f"❌ Error creating snapshot: {e}")
+        print(f"[ETL] Error creating snapshot: {e}")
     finally:
         db.close()
     
