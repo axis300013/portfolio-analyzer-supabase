@@ -121,28 +121,81 @@ class _TrendsScreenState extends State<TrendsScreen> {
       if (mounted) {
         if (result['success'] == true) {
           setState(() {
-            _updateStatus = 'Update started! Check status in 2-5 minutes.';
+            _updateStatus = 'Update started! Running ETL pipeline...';
           });
 
           // Show success notification
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Daily update triggered successfully'),
-                duration: Duration(seconds: 4),
+                content: Text('Daily update triggered - please wait...'),
+                duration: Duration(seconds: 2),
               ),
             );
           }
 
-          // Auto-refresh trends data after 2 minutes
-          Future.delayed(const Duration(minutes: 2), () {
+          // Poll status every 5 seconds until completion
+          bool isComplete = false;
+          int pollCount = 0;
+          const maxPolls = 24; // 2 minutes max (24 * 5 seconds)
+
+          while (!isComplete && pollCount < maxPolls && mounted) {
+            await Future.delayed(const Duration(seconds: 5));
+            pollCount++;
+
+            final status = await DailyUpdateService.getUpdateStatus();
+
             if (mounted) {
-              setState(() {
-                _isLoading = true;
-              });
-              _loadTrendsData();
+              if (status['is_running'] == false) {
+                isComplete = true;
+
+                if (status['last_error'] != null) {
+                  setState(() {
+                    _updateStatus = 'Update failed: ${status['last_error']}';
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('ETL failed: ${status['last_error']}'),
+                      backgroundColor: Colors.red,
+                      duration: Duration(seconds: 5),
+                    ),
+                  );
+                } else {
+                  setState(() {
+                    _updateStatus = 'Update completed successfully!';
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content:
+                          Text('✅ Daily update completed! Refreshing data...'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+
+                  // Refresh data immediately
+                  setState(() {
+                    _isLoading = true;
+                  });
+                  await _loadTrendsData();
+                }
+              } else {
+                // Still running - update status message
+                final step = status['current_step'] ?? 'Processing...';
+                setState(() {
+                  _updateStatus = 'Running: $step';
+                });
+              }
             }
-          });
+          }
+
+          if (!isComplete && mounted) {
+            setState(() {
+              _updateStatus = 'Update timed out - check backend logs';
+            });
+          }
         } else {
           setState(() {
             _updateStatus = 'Error: ${result['error']}';
@@ -493,17 +546,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       if (value.toInt() >= 0 &&
                           value.toInt() < sortedDates.length) {
                         final date = sortedDates[value.toInt()];
-                        // Show year on first occurrence or January
-                        bool showYear = value.toInt() == 0 ||
-                            (value.toInt() > 0 &&
-                                sortedDates[value.toInt()].year !=
-                                    sortedDates[value.toInt() - 1].year);
                         return Transform.rotate(
                           angle: -1.5708, // -90 degrees in radians
                           child: Text(
-                            showYear
-                                ? '${date.year}\n${DateFormat('MMM').format(date)}'
-                                : DateFormat('MMM').format(date),
+                            DateFormat('MM.dd').format(date),
                             style: const TextStyle(fontSize: 9),
                             textAlign: TextAlign.center,
                           ),
@@ -614,17 +660,10 @@ class _TrendsScreenState extends State<TrendsScreen> {
                       if (value.toInt() >= 0 &&
                           value.toInt() < sortedDates.length) {
                         final date = sortedDates[value.toInt()];
-                        // Show year on first occurrence or year change
-                        bool showYear = value.toInt() == 0 ||
-                            (value.toInt() > 0 &&
-                                sortedDates[value.toInt()].year !=
-                                    sortedDates[value.toInt() - 1].year);
                         return Transform.rotate(
                           angle: -1.5708, // -90 degrees in radians
                           child: Text(
-                            showYear
-                                ? '${date.year}\n${DateFormat('MMM').format(date)}'
-                                : DateFormat('MMM').format(date),
+                            DateFormat('MM.dd').format(date),
                             style: const TextStyle(fontSize: 9),
                             textAlign: TextAlign.center,
                           ),
@@ -768,10 +807,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     getTitlesWidget: (value, meta) {
                       if (value.toInt() >= 0 && value.toInt() < years.length) {
                         final year = years[value.toInt()];
+                        // Get the date for this year from allSnapshots
+                        final snapshot = allSnapshots.firstWhere(
+                          (s) =>
+                              DateTime.parse(s['snapshot_date'] as String)
+                                  .year ==
+                              year,
+                          orElse: () => allSnapshots.first,
+                        );
+                        final date =
+                            DateTime.parse(snapshot['snapshot_date'] as String);
                         return Transform.rotate(
                           angle: -1.5708,
                           child: Text(
-                            year.toString(),
+                            DateFormat('MM.dd').format(date),
                             style: const TextStyle(
                                 fontSize: 9, color: Colors.grey),
                             textAlign: TextAlign.center,
@@ -934,10 +983,20 @@ class _TrendsScreenState extends State<TrendsScreen> {
                     getTitlesWidget: (value, meta) {
                       if (value.toInt() >= 0 && value.toInt() < years.length) {
                         final year = years[value.toInt()];
+                        // Get the date for this year from monthlySnapshots
+                        final snapshot = monthlySnapshots.firstWhere(
+                          (s) =>
+                              DateTime.parse(s['snapshot_date'] as String)
+                                  .year ==
+                              year,
+                          orElse: () => monthlySnapshots.first,
+                        );
+                        final date =
+                            DateTime.parse(snapshot['snapshot_date'] as String);
                         return Transform.rotate(
                           angle: -1.5708,
                           child: Text(
-                            year.toString(),
+                            DateFormat('MM.dd').format(date),
                             style: const TextStyle(
                                 fontSize: 9, color: Colors.grey),
                             textAlign: TextAlign.center,

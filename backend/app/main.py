@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from . import crud, models, wealth_crud
 from .db import get_db, engine
 from .automatic_loan_reductions import check_and_run_automatic_reductions
+from .daily_update_endpoint import router as daily_update_router
 
 # Create tables
 models.Base.metadata.create_all(bind=engine)
@@ -22,21 +23,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include daily update router
+app.include_router(daily_update_router)
+
 # Run automatic loan reductions on startup
 @app.on_event("startup")
 async def startup_event():
     """Run automatic tasks on app startup"""
     try:
+        print("🔄 Checking automatic loan reductions on startup...")
         db = next(get_db())
         result = check_and_run_automatic_reductions(db)
         if result["status"] == "completed":
             print("✓ Automatic loan reductions completed on startup")
         else:
             print(f"ℹ Loan reductions: {result['message']}")
+        db.close()
+        print("✓ Startup event completed successfully")
     except Exception as e:
         print(f"⚠ Error running automatic loan reductions: {e}")
-    finally:
-        db.close()
+        import traceback
+        traceback.print_exc()
 
 @app.get("/")
 def root():

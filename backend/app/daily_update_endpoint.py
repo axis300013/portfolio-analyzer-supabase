@@ -5,11 +5,15 @@ Allows remote triggering of ETL pipeline from mobile app or external services
 
 from fastapi import APIRouter, BackgroundTasks
 from datetime import datetime
-import asyncio
 import subprocess
 import sys
 import os
 from pathlib import Path
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/updates", tags=["updates"])
 
@@ -54,7 +58,10 @@ async def trigger_daily_update(background_tasks: BackgroundTasks):
         curl -X POST https://abc123.ngrok.io/api/updates/trigger-daily-update
     """
     
+    logger.info("📲 Update trigger request received from mobile app")
+    
     if _update_status["is_running"]:
+        logger.warning("⚠️ ETL already running, rejecting new request")
         return {
             "status": "ETL already running",
             "timestamp": datetime.now().isoformat(),
@@ -66,8 +73,11 @@ async def trigger_daily_update(background_tasks: BackgroundTasks):
     _update_status["last_started"] = datetime.now().isoformat()
     _update_status["current_step"] = "Initializing ETL pipeline..."
     
+    logger.info(f"✅ Marked ETL as running at {_update_status['last_started']}")
+    
     # Add ETL task to background
     background_tasks.add_task(_run_etl_pipeline)
+    logger.info("✅ Background task added to queue")
     
     return {
         "status": "ETL pipeline started",
@@ -92,31 +102,33 @@ async def _run_etl_pipeline():
         etl_script = current_dir / "etl" / "run_daily_etl.py"
         
         _update_status["current_step"] = "Running ETL pipeline..."
+        logger.info(f"🚀 Starting ETL pipeline from {etl_script}")
+        print(f"🚀 Starting ETL pipeline from {etl_script}", flush=True)
         
-        # Run ETL subprocess
-        result = subprocess.run(
-            [sys.executable, str(etl_script)],
-            capture_output=True,
-            text=True,
-            timeout=600,  # 10 minutes max
-        )
-        
-        if result.returncode == 0:
+        # Run ETL as Python module (not subprocess)
+        try:
+            from .etl.run_daily_etl import run_daily_etl
+            logger.info("✅ Running ETL directly as module")
+            print("✅ Running ETL directly as module", flush=True)
+            run_daily_etl()
+            
             _update_status["is_running"] = False
             _update_status["last_completed"] = datetime.now().isoformat()
             _update_status["current_step"] = "Completed successfully"
             _update_status["last_error"] = None
-        else:
+            logger.info("✅ ETL pipeline completed successfully")
+            print("✅ ETL pipeline completed successfully")
+            
+        except Exception as etl_error:
+            logger.error(f"❌ ETL execution failed: {str(etl_error)}")
+            print(f"❌ ETL execution failed: {str(etl_error)}")
             _update_status["is_running"] = False
-            _update_status["last_error"] = result.stderr
-            _update_status["current_step"] = f"Failed: {result.stderr[:200]}"
-    
-    except asyncio.TimeoutError:
-        _update_status["is_running"] = False
-        _update_status["last_error"] = "ETL pipeline timeout after 10 minutes"
-        _update_status["current_step"] = "Timeout"
+            _update_status["last_error"] = str(etl_error)
+            _update_status["current_step"] = f"Failed: {str(etl_error)[:200]}"
     
     except Exception as e:
+        logger.error(f"❌ Unexpected error: {str(e)}")
+        print(f"❌ Unexpected error: {str(e)}")
         _update_status["is_running"] = False
         _update_status["last_error"] = str(e)
         _update_status["current_step"] = f"Error: {str(e)[:100]}"
