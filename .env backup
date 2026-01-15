@@ -1,0 +1,8 @@
+DATABASE_URL=postgresql://postgres:Clobufclobuf01#@db.hrlzrirsvifxsnccxvsa.supabase.co:5432/postgres
+MNB_API_URL=https://www.mnb.hu/arfolyamok.asmx
+API_HOST=0.0.0.0
+API_PORT=8000
+UI_PORT=8501
+DATABASE_POOL_SIZE=5
+DATABASE_MAX_OVERFLOW=10
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhybHpyaXJzdmlmeHNuY2N4dnNhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ5NDQzMTcsImV4cCI6MjA4MDUyMDMxN30.IAhjGmpcNA9KIi6fSTIPauVVNTIRSb8jBNCJTpmHodA

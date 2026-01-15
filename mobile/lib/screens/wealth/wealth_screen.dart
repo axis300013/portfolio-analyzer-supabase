@@ -12,7 +12,9 @@ class WealthScreen extends StatefulWidget {
 }
 
 class _WealthScreenState extends State<WealthScreen> {
-  List<WealthSnapshot> _wealthData = [];
+  List<Map<String, dynamic>> _wealthData = [];
+  Map<String, dynamic>? _dashboardSummary;
+  DateTime? _snapshotDate;
   bool _isLoading = true;
   String? _errorMessage;
   int _selectedIndex = 2;
@@ -31,10 +33,56 @@ class _WealthScreenState extends State<WealthScreen> {
 
   Future<void> _loadWealthData() async {
     try {
+      // Load both dashboard summary (for total assets) and wealth details
+      final summary = await SupabaseService.getDashboardSummary();
       final data = await SupabaseService.getLatestWealthValues();
+
+      // Extract snapshot date from the data
+      DateTime? snapshotDate;
+      if (data.isNotEmpty && data[0]['value_date'] != null) {
+        snapshotDate = DateTime.parse(data[0]['value_date'] as String);
+      }
+
+      // Debug: Print first item to see structure
+      if (data.isNotEmpty) {
+        print('Sample wealth item: ${data[0]}');
+        print('Wealth categories: ${data[0]['wealth_categories']}');
+      }
+
       setState(() {
-        _wealthData = data.map((item) => WealthSnapshot.fromJson(item)).toList();
+        _dashboardSummary = summary;
+        // Filter to show only non-zero values
+        _wealthData = data.where((item) {
+          final value = (item['present_value'] ?? 0) as num;
+          return value != 0;
+        }).toList();
+        _snapshotDate = snapshotDate;
         _isLoading = false;
+
+        // Debug: Print categorization
+        print('Total items loaded: ${_wealthData.length}');
+        print('CASH items: ${_getItemsByCategory('CASH').length}');
+        print('PROPERTY items: ${_getItemsByCategory('PROPERTY').length}');
+        print('PENSION items: ${_getItemsByCategory('PENSION').length}');
+        print(
+            'LIABILITIES items: ${_getItemsByCategory('LIABILITIES').length}');
+
+        // Debug: show category types to detect trailing spaces/variants
+        final typeCounts = <String, int>{};
+        for (final item in _wealthData) {
+          final normalized = _normalizedCategoryType(item);
+          typeCounts[normalized] = (typeCounts[normalized] ?? 0) + 1;
+        }
+        print('Category type distribution (normalized): $typeCounts');
+
+        // Debug: list CASH items with names/values to find filtered entries
+        final cashItems = _getItemsByCategory('CASH');
+        for (final item in cashItems) {
+          final name = item['wealth_categories']?['name'];
+          final value = item['present_value'];
+          final rawType = item['wealth_categories']?['category_type'];
+          print('CASH item -> name: $name | value: $value | rawType: $rawType');
+        }
       });
     } catch (e) {
       setState(() {
@@ -65,14 +113,27 @@ class _WealthScreenState extends State<WealthScreen> {
     }
   }
 
-  List<WealthSnapshot> _getItemsByCategory(String category) {
-    return _wealthData.where((item) => item.category == category).toList();
+  List<Map<String, dynamic>> _getItemsByCategory(String categoryType) {
+    final target = categoryType.toUpperCase();
+    return _wealthData
+        .where((item) => _normalizedCategoryType(item) == target)
+        .toList();
   }
 
-  double _getCategoryTotal(String category) {
-    return _getItemsByCategory(category).fold<double>(
+  String _normalizedCategoryType(Map<String, dynamic> item) {
+    final wealthCategory = item['wealth_categories'];
+    final isLiability = wealthCategory?['is_liability'] == true;
+    if (isLiability) return 'LIABILITIES';
+
+    final rawType = wealthCategory?['category_type']?.toString() ?? '';
+    final normalized = rawType.toUpperCase().trim();
+    return normalized.isEmpty ? 'UNKNOWN' : normalized;
+  }
+
+  double _getCategoryTotal(String categoryType) {
+    return _getItemsByCategory(categoryType).fold<double>(
       0.0,
-      (sum, item) => sum + item.valueHuf,
+      (sum, item) => sum + ((item['present_value'] ?? 0) as num).toDouble(),
     );
   }
 
@@ -145,13 +206,27 @@ class _WealthScreenState extends State<WealthScreen> {
                             child: ListView(
                               padding: const EdgeInsets.all(16),
                               children: [
-                                _buildCategorySection('CASH', Colors.green, Icons.attach_money),
-                                const SizedBox(height: 16),
-                                _buildCategorySection('PROPERTY', Colors.blue, Icons.home),
-                                const SizedBox(height: 16),
-                                _buildCategorySection('PENSION', Colors.orange, Icons.account_balance),
-                                const SizedBox(height: 16),
-                                _buildCategorySection('LIABILITIES', Colors.red, Icons.credit_card),
+                                if (_snapshotDate != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(bottom: 16),
+                                    child: Text(
+                                      'Snapshot Date: ${DateFormat('yyyy-MM-dd').format(_snapshotDate!)}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ),
+                                ..._getDisplayCategories()
+                                    .map((category) => Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 16),
+                                          child: _buildCategorySection(
+                                            category,
+                                            _getCategoryColor(category),
+                                            _getCategoryIcon(category),
+                                          ),
+                                        )),
                               ],
                             ),
                           ),
@@ -188,11 +263,13 @@ class _WealthScreenState extends State<WealthScreen> {
   }
 
   Widget _buildSummaryHeader() {
-    final assets = _getCategoryTotal('CASH') +
-        _getCategoryTotal('PROPERTY') +
-        _getCategoryTotal('PENSION');
-    final liabilities = _getCategoryTotal('LIABILITIES');
-    final netWealth = assets - liabilities;
+    if (_dashboardSummary == null) {
+      return const SizedBox.shrink();
+    }
+
+    final totalAssets = (_dashboardSummary!['total_assets'] ?? 0) as num;
+    final liabilities = (_dashboardSummary!['total_liabilities'] ?? 0) as num;
+    final netWealth = totalAssets - liabilities;
 
     return Container(
       width: double.infinity,
@@ -207,7 +284,7 @@ class _WealthScreenState extends State<WealthScreen> {
       child: Column(
         children: [
           const Text(
-            'Net Wealth',
+            'Total Assets (Wealth)',
             style: TextStyle(
               fontSize: 16,
               color: Colors.white70,
@@ -215,7 +292,7 @@ class _WealthScreenState extends State<WealthScreen> {
           ),
           const SizedBox(height: 8),
           Text(
-            currencyFormatter.format(netWealth),
+            currencyFormatter.format(totalAssets.toDouble()),
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
@@ -237,7 +314,7 @@ class _WealthScreenState extends State<WealthScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    currencyFormatter.format(assets),
+                    currencyFormatter.format(totalAssets.toDouble()),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -257,7 +334,7 @@ class _WealthScreenState extends State<WealthScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    currencyFormatter.format(liabilities),
+                    currencyFormatter.format(liabilities.toDouble()),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -273,11 +350,51 @@ class _WealthScreenState extends State<WealthScreen> {
     );
   }
 
-  Widget _buildCategorySection(String category, Color color, IconData icon) {
-    final items = _getItemsByCategory(category);
+  List<String> _getDisplayCategories() {
+    // Return fixed categories in order
+    final categories = ['CASH', 'PROPERTY', 'PENSION', 'LIABILITIES'];
+    // Only return categories that have items
+    return categories
+        .where((cat) => _getItemsByCategory(cat).isNotEmpty)
+        .toList();
+  }
+
+  Color _getCategoryColor(String categoryType) {
+    switch (categoryType) {
+      case 'CASH':
+        return Colors.green;
+      case 'PROPERTY':
+        return Colors.blue;
+      case 'PENSION':
+        return Colors.orange;
+      case 'LIABILITIES':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getCategoryIcon(String categoryType) {
+    switch (categoryType) {
+      case 'CASH':
+        return Icons.attach_money;
+      case 'PROPERTY':
+        return Icons.home;
+      case 'PENSION':
+        return Icons.account_balance;
+      case 'LIABILITIES':
+        return Icons.credit_card;
+      default:
+        return Icons.account_balance_wallet;
+    }
+  }
+
+  Widget _buildCategorySection(
+      String categoryType, Color color, IconData icon) {
+    final items = _getItemsByCategory(categoryType);
     if (items.isEmpty) return const SizedBox.shrink();
 
-    final total = _getCategoryTotal(category);
+    final total = _getCategoryTotal(categoryType);
 
     return Card(
       child: Column(
@@ -297,7 +414,7 @@ class _WealthScreenState extends State<WealthScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    category,
+                    categoryType,
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
@@ -322,7 +439,11 @@ class _WealthScreenState extends State<WealthScreen> {
     );
   }
 
-  Widget _buildWealthItem(WealthSnapshot snapshot) {
+  Widget _buildWealthItem(Map<String, dynamic> item) {
+    final rawName = item['wealth_categories']?['name'] ?? 'Unknown';
+    final categoryName = _normalizeName(rawName);
+    final value = (item['present_value'] ?? 0) as num;
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
@@ -338,7 +459,7 @@ class _WealthScreenState extends State<WealthScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  snapshot.itemName ?? 'Unknown',
+                  categoryName,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w500,
@@ -346,7 +467,7 @@ class _WealthScreenState extends State<WealthScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${snapshot.valueInOriginalCurrency.toStringAsFixed(2)} ${snapshot.currency}',
+                  'Present Value',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Colors.grey,
@@ -356,7 +477,7 @@ class _WealthScreenState extends State<WealthScreen> {
             ),
           ),
           Text(
-            currencyFormatter.format(snapshot.valueHuf),
+            currencyFormatter.format(value.toDouble()),
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -365,5 +486,18 @@ class _WealthScreenState extends State<WealthScreen> {
         ],
       ),
     );
+  }
+
+  String _normalizeName(String rawName) {
+    final cleaned =
+        rawName.replaceAll(RegExp(r'[^\x20-\x7E]'), '').toLowerCase();
+    if (cleaned.contains('szep') ||
+        cleaned.contains('szp') ||
+        cleaned.contains('szepkartya') ||
+        cleaned.contains('szpkartya')) {
+      // Normalize corrupted SZEP kartya variants to a single readable label
+      return 'SZEP Kartya';
+    }
+    return rawName;
   }
 }

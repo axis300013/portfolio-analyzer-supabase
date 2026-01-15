@@ -34,16 +34,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Testing Supabase connection...
+echo Testing REST API connection...
 
-python -c "import os; from dotenv import load_dotenv; from sqlalchemy import create_engine, text; load_dotenv(); engine = create_engine(os.getenv('DATABASE_URL')); conn = engine.connect(); conn.execute(text('SELECT 1')); print('Connected to Supabase!')" 2>nul
-if errorlevel 1 (
-    echo ERROR: Cannot connect to Supabase!
-    echo Check your .env file and internet connection.
-    echo.
-    pause
-    exit /b 1
-)
+python -c "import os, requests; from dotenv import load_dotenv; load_dotenv(); supabase_url = os.getenv('SUPABASE_URL'); result = requests.head(supabase_url, timeout=5); print('Connected to Supabase!' if result.status_code < 400 else 'Supabase unavailable')" 2>nul
 
 echo.
 echo Starting FastAPI backend...
@@ -52,7 +45,7 @@ start "Portfolio Analyzer - API" /MIN cmd /c "cd backend && python -m uvicorn ap
 timeout /t 3 >nul
 
 echo Starting Streamlit UI...
-start "Portfolio Analyzer - UI" /MIN cmd /c "cd ui && streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true"
+start "Portfolio Analyzer - UI" /MIN cmd /c "cd ui && python -m streamlit run streamlit_app_wealth.py --server.port 8501 --server.headless true"
 
 echo.
 echo Waiting for services to start...
