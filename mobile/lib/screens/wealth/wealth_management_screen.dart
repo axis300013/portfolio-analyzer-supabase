@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../services/supabase_service.dart';
 
@@ -29,6 +30,16 @@ class _WealthManagementScreenState extends State<WealthManagementScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/');
+            }
+          },
+        ),
         title: const Text('Wealth Management'),
         bottom: TabBar(
           controller: _tabController,
@@ -514,14 +525,18 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
   }
 
   Future<void> _loadRecentValues() async {
+    print('[LOAD RECENT] Starting _loadRecentValues()');
     setState(() => _isLoading = true);
     try {
       final values = await SupabaseService.getLatestWealthValues();
+      print('[LOAD RECENT] Loaded ${values.length} recent wealth values');
       setState(() {
         _recentValues = values;
         _isLoading = false;
       });
+      print('[LOAD RECENT] setState complete, UI should update');
     } catch (e) {
+      print('[LOAD RECENT] ERROR: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -541,6 +556,138 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
     if (picked != null) {
       setState(() => _selectedDate = picked);
     }
+  }
+
+  Future<void> _showEditValueDialog(Map<String, dynamic> value) async {
+    final wealthCat = value['wealth_categories'];
+    if (wealthCat == null) return;
+
+    final editValueController =
+        TextEditingController(text: (value['present_value'] ?? 0).toString());
+    final editNotesController =
+        TextEditingController(text: value['note'] ?? '');
+    DateTime editDate = DateTime.parse(value['value_date'] as String);
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Edit Wealth Value'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  wealthCat['name'] ?? 'Unknown',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: editValueController,
+                  decoration: InputDecoration(
+                    labelText:
+                        'Current Value (${wealthCat['currency'] ?? "HUF"}) *',
+                    border: const OutlineInputBorder(),
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 16),
+                InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: editDate,
+                      firstDate: DateTime(2015, 7),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setDialogState(() => editDate = picked);
+                    }
+                  },
+                  child: InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: 'Value Date',
+                      border: OutlineInputBorder(),
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    child: Text(
+                      DateFormat('yyyy-MM-dd').format(editDate),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: editNotesController,
+                  decoration: const InputDecoration(
+                    labelText: 'Notes (optional)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (editValueController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a value')),
+                  );
+                  return;
+                }
+
+                final newValue = double.tryParse(editValueController.text);
+                if (newValue == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Invalid value format')),
+                  );
+                  return;
+                }
+
+                try {
+                  await SupabaseService.saveWealthValue(
+                    id: value['id'] as int?,
+                    categoryId: value['wealth_category_id'] as int,
+                    presentValue: newValue,
+                    valueDate: DateFormat('yyyy-MM-dd').format(editDate),
+                    note: editNotesController.text.trim().isEmpty
+                        ? null
+                        : editNotesController.text.trim(),
+                  );
+
+                  if (mounted) {
+                    Navigator.pop(context); // Close dialog
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Wealth value updated successfully!'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                    _loadRecentValues();
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: $e')),
+                    );
+                  }
+                }
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _saveWealthValue() async {
@@ -567,6 +714,8 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
     }
 
     try {
+      print('[UPDATE FORM] Saving wealth value: categoryId=$_selectedCategoryId, value=$value, date=${DateFormat('yyyy-MM-dd').format(_selectedDate)}');
+      
       await SupabaseService.saveWealthValue(
         categoryId: _selectedCategoryId!,
         presentValue: value,
@@ -576,9 +725,14 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
             : _notesController.text.trim(),
       );
 
+      print('[UPDATE FORM] Save successful, refreshing list');
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Wealth value saved successfully!')),
+          const SnackBar(
+            content: Text('Wealth value saved successfully!'),
+            duration: Duration(seconds: 2),
+          ),
         );
 
         // Clear form
@@ -586,12 +740,15 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
           _valueController.clear();
           _notesController.clear();
           _selectedCategoryId = null;
+          _selectedCategory = null;
           _selectedDate = DateTime.now();
         });
 
+        print('[UPDATE FORM] Calling _loadRecentValues()');
         _loadRecentValues();
       }
     } catch (e) {
+      print('[UPDATE FORM] ERROR: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error: $e')),
@@ -759,12 +916,24 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
                         itemCount: _recentValues.length,
                         itemBuilder: (context, index) {
                           final value = _recentValues[index];
-                          final isLiability = value['is_liability'] ?? false;
-                          final amount = value['present_value'] ?? 0.0;
+                          final wealthCat = value['wealth_categories'];
+
+                          // Skip if wealth_categories is null
+                          if (wealthCat == null) {
+                            return const SizedBox.shrink();
+                          }
+
+                          final isLiability =
+                              wealthCat['is_liability'] ?? false;
+                          final amount = (value['present_value'] ?? 0.0) as num;
+                          final categoryName = wealthCat['name'] ?? 'Unknown';
+                          final categoryType =
+                              wealthCat['category_type'] ?? 'N/A';
 
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
+                              onTap: () => _showEditValueDialog(value),
                               leading: CircleAvatar(
                                 backgroundColor: isLiability
                                     ? Colors.red.shade100
@@ -778,19 +947,19 @@ class _WealthValuesTabState extends State<WealthValuesTab> {
                                 ),
                               ),
                               title: Text(
-                                value['category_name'] ?? 'Unknown',
+                                categoryName,
                                 style: const TextStyle(
                                     fontWeight: FontWeight.bold),
                               ),
                               subtitle: Text(
-                                'Type: ${value['category_type'] ?? 'N/A'}',
+                                'Type: $categoryType',
                               ),
                               trailing: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 crossAxisAlignment: CrossAxisAlignment.end,
                                 children: [
                                   Text(
-                                    currencyFormatter.format(amount),
+                                    currencyFormatter.format(amount.toDouble()),
                                     style: TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 16,

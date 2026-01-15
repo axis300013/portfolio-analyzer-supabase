@@ -34,7 +34,11 @@ class _WealthScreenState extends State<WealthScreen> {
     try {
       // Load both wealth values and portfolio value
       final data = await SupabaseService.getLatestWealthValues();
+      print('💰 Wealth screen received ${data.length} wealth values');
+
       final portfolioData = await SupabaseService.getLatestPortfolioValues();
+      print(
+          '💰 Wealth screen received ${portfolioData.length} portfolio values');
 
       // Get FX rates for latest date
       final latestDate = data.isNotEmpty
@@ -48,13 +52,24 @@ class _WealthScreenState extends State<WealthScreen> {
         (sum, item) => sum + ((item['value_huf'] ?? 0) as num).toDouble(),
       );
 
+      print('💰 Portfolio total: $portfolioTotal');
+
       setState(() {
         _wealthData =
             data.map((item) => WealthSnapshot.fromJson(item, fxRates)).toList();
         _portfolioValue = portfolioTotal;
         _isLoading = false;
       });
+
+      // Debug category breakdown
+      final cashItems =
+          _wealthData.where((item) => item.category == 'CASH').toList();
+      print('💰 CASH items: ${cashItems.length}');
+      for (var item in cashItems) {
+        print('   - ${item.itemName}: ${item.valueHuf} HUF');
+      }
     } catch (e) {
+      print('❌ Error loading wealth data: $e');
       setState(() {
         _errorMessage = e.toString();
         _isLoading = false;
@@ -222,13 +237,29 @@ class _WealthScreenState extends State<WealthScreen> {
   }
 
   Widget _buildSummaryHeader() {
-    final assets = _getCategoryTotal('CASH') +
-        _getCategoryTotal('PROPERTY') +
-        _getCategoryTotal('PENSION');
+    final cash = _getCategoryTotal('CASH');
+    final property = _getCategoryTotal('PROPERTY');
+    final pension = _getCategoryTotal('PENSION');
+    final assets = cash + property + pension;
     final liabilities = _getCategoryTotal('LIABILITIES');
 
     // NET WEALTH = Portfolio + Other Assets - Liabilities
     final netWealth = _portfolioValue + assets - liabilities;
+
+    print('💰 WEALTH SCREEN CALCULATION:');
+    print('   Portfolio Value: $_portfolioValue');
+    print('   CASH Total: $cash');
+    print('   PROPERTY Total: $property');
+    print('   PENSION Total: $pension');
+    print('   Total Assets: $assets');
+    print('   Liabilities: $liabilities');
+    print('   Net Wealth: $netWealth');
+    print('   Total items in _wealthData: ${_wealthData.length}');
+
+    // Debug: show all items
+    for (var item in _wealthData) {
+      print('   - ${item.itemName} (${item.category}): ${item.valueHuf} HUF');
+    }
 
     return Container(
       width: double.infinity,

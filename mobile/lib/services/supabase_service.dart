@@ -134,23 +134,38 @@ class SupabaseService {
   }
 
   static Future<List<Map<String, dynamic>>> getLatestWealthValues() async {
-    // Get the latest snapshot date
-    final latestSnapshot = await client
+    // Get all wealth values from Dec 1, 2025 onwards, ordered by date descending
+    final allValues = await client
         .from('wealth_values')
-        .select('value_date')
-        .order('value_date', ascending: false)
-        .limit(1)
-        .single();
-
-    final latestDate = latestSnapshot['value_date'];
-
-    // Get all values for that date
-    final data = await client.from('wealth_values').select('''
+        .select('''
           *,
           wealth_categories(name, category_type, is_liability, currency)
-        ''').order('wealth_category_id');
+        ''')
+        .gte('value_date', '2025-12-01') // Only from Dec 1, 2025 onwards
+        .order('value_date', ascending: false);
 
-    return data.where((item) => item['value_date'] == latestDate).toList();
+    print(
+        '[WEALTH] Total wealth_values from 2025-12-01 onwards: ${allValues.length}');
+
+    // Group by wealth_category_id and keep only the first (most recent) for each
+    Map<int, Map<String, dynamic>> latestByCategory = {};
+    for (var value in allValues) {
+      final categoryId = value['wealth_category_id'] as int;
+
+      // Only add if we haven't seen this category yet (first occurrence is most recent)
+      if (!latestByCategory.containsKey(categoryId) &&
+          value['wealth_categories'] != null) {
+        latestByCategory[categoryId] = value;
+        print(
+            '[WEALTH] Category $categoryId latest: id=${value['id']}, date=${value['value_date']}, value=${value['present_value']}');
+      }
+    }
+
+    final result = latestByCategory.values.toList();
+    print(
+        '[WEALTH] Unique categories with latest values (from Dec 1+): ${result.length}');
+
+    return result;
   }
 
   // Get latest FX rates for a given date
@@ -442,16 +457,75 @@ class SupabaseService {
   }
 
   static Future<void> deleteWealthCategory(int id) async {
-    await client.from('wealth_categories').delete().eq('id', id);
+    // Block delete if any wealth_values exist to avoid FK/RLS silent failures.
+    final hasValues = await client
+        .from('wealth_values')
+        .select('id')
+        .eq('wealth_category_id', id)
+        .limit(1);
+
+    if (hasValues.isNotEmpty) {
+      throw Exception(
+          'Delete blocked: remove wealth values for this category first.');
+    }
+
+    final response = await client
+        .from('wealth_categories')
+        .delete()
+        .eq('id', id)
+        .select();
+
+    if (response.isEmpty) {
+      throw Exception('Delete failed or was blocked (no rows deleted)');
+    }
   }
 
   // Wealth Management - Value Updates
   static Future<void> saveWealthValue({
+    int? id, // optional direct update by ID
     required int categoryId,
     required double presentValue,
     required String valueDate,
     String? note,
   }) async {
+    print(
+        '[SAVE] Starting saveWealthValue: id=$id, categoryId=$categoryId, value=$presentValue, date=$valueDate');
+
+    // If ID is provided, update that specific row (used by edit dialog)
+    if (id != null) {
+      try {
+        final updated = await client
+            .from('wealth_values')
+            .update({
+              'wealth_category_id': categoryId,
+              'present_value': presentValue,
+              'value_date': valueDate,
+              'note': note,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', id)
+            .select();
+
+        if (updated.isEmpty) {
+          print('[SAVE] Update by ID returned no rows (possibly minimal return).');
+        }
+          // Read back to verify the value actually changed
+          final verify = await client
+              .from('wealth_values')
+              .select('id, present_value, value_date')
+              .eq('id', id)
+              .maybeSingle();
+          print('[SAVE] Verify after update: $verify');
+          if (verify == null || (verify['present_value'] as num?)?.toDouble() != presentValue) {
+            throw Exception('Update appears not applied (read-back mismatch)');
+          }
+          print('[SAVE] Update by ID completed for ID $id');
+        return;
+      } catch (e) {
+        throw Exception('Update blocked: $e');
+      }
+    }
+
     // Check if a record already exists for this category and date
     final existing = await client
         .from('wealth_values')
@@ -460,25 +534,62 @@ class SupabaseService {
         .eq('value_date', valueDate)
         .maybeSingle();
 
+    print(
+        '[SAVE] Existing record: ${existing != null ? existing['id'] : "NONE"}');
+
     if (existing != null) {
       // Update existing record
-      await client
-          .from('wealth_values')
-          .update({
-            'present_value': presentValue,
-            'note': note,
-          })
-          .eq('wealth_category_id', categoryId)
-          .eq('value_date', valueDate);
+      print('[SAVE] Updating existing record ID ${existing['id']}');
+      try {
+        final updated = await client
+            .from('wealth_values')
+            .update({
+              'present_value': presentValue,
+              'note': note,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', existing['id'])
+            .select();
+        if (updated.isEmpty) {
+          print('[SAVE] Update returned no rows (possibly minimal return).');
+        }
+      } catch (e) {
+        throw Exception('Update blocked: $e');
+      }
+      print('[SAVE] Update completed for ID ${existing['id']}');
     } else {
       // Insert new record
-      await client.from('wealth_values').insert({
-        'wealth_category_id': categoryId,
-        'present_value': presentValue,
-        'value_date': valueDate,
-        'note': note,
-      });
+      print('[SAVE] Inserting new record');
+      try {
+        final inserted = await client
+            .from('wealth_values')
+            .insert({
+              'wealth_category_id': categoryId,
+              'present_value': presentValue,
+              'value_date': valueDate,
+              'note': note,
+            })
+            .select();
+        if (inserted.isEmpty) {
+          print('[SAVE] Insert returned no rows (possibly minimal return).');
+        }
+        final verify = await client
+            .from('wealth_values')
+            .select('id, present_value, value_date')
+            .order('id', ascending: false)
+            .limit(1)
+            .maybeSingle();
+        print('[SAVE] Verify after insert: $verify');
+        if (verify == null || (verify['present_value'] as num?)?.toDouble() != presentValue) {
+          throw Exception('Insert appears not applied (read-back mismatch)');
+        }
+      } catch (e) {
+        throw Exception('Insert blocked: $e');
+      }
+      print('[SAVE] Insert completed');
     }
+
+    print('[SAVE] saveWealthValue completed successfully');
   }
 
   // ETL Trigger - Refresh Data from Backend
