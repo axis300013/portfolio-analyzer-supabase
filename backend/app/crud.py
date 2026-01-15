@@ -97,15 +97,17 @@ def add_manual_price(
     ).first()
     
     if existing:
+        # Update existing record (don't change created_at)
         existing.price = price
         existing.currency = currency
         existing.reason = reason
         existing.created_by = created_by
-        existing.created_at = datetime.utcnow()
+        # Don't update created_at - it should remain unchanged
         db.commit()
         db.refresh(existing)
         return existing
     else:
+        # Create new record (created_at will be set automatically by default)
         manual_price = models.ManualPrice(
             instrument_id=instrument_id,
             override_date=override_date,

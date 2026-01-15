@@ -143,6 +143,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       case 3:
         context.go('/trends');
         break;
+      case 4:
+        context.go('/analytics');
+        break;
     }
   }
 
@@ -166,6 +169,11 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           onPressed: () => context.go('/'),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.edit),
+            onPressed: () => context.go('/portfolio/manage'),
+            tooltip: 'Manage Portfolio',
+          ),
           IconButton(
             icon: const Icon(Icons.calendar_today),
             onPressed: _showDatePicker,
@@ -261,6 +269,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.show_chart),
             label: 'Trends',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.table_chart),
+            label: 'Analytics',
           ),
         ],
       ),

@@ -9,11 +9,12 @@ def get_latest_price(instrument_id: int, price_date: date, db: Session) -> Decim
     """Get latest price for instrument on or before date
     
     Priority order:
-    1. Manual price overrides (highest priority)
-    2. Non-test prices (real data from APIs)
-    3. Test data (fallback)
+    1. Manual price overrides (if more recent than automatic prices)
+    2. Non-test automatic prices (real data from APIs)
+    3. Manual price overrides (as fallback if no automatic prices exist)
+    4. Test data (last resort fallback)
     """
-    # First priority: Check for manual price override
+    # Get the most recent manual price
     manual_price = db.query(ManualPrice).filter(
         and_(
             ManualPrice.instrument_id == instrument_id,
@@ -21,11 +22,8 @@ def get_latest_price(instrument_id: int, price_date: date, db: Session) -> Decim
         )
     ).order_by(ManualPrice.override_date.desc()).first()
     
-    if manual_price:
-        return manual_price.price
-    
-    # Second priority: Try to get non-test prices (API data)
-    price = db.query(Price).filter(
+    # Get the most recent automatic price (non-test)
+    auto_price = db.query(Price).filter(
         and_(
             Price.instrument_id == instrument_id,
             Price.price_date <= price_date,
@@ -33,18 +31,28 @@ def get_latest_price(instrument_id: int, price_date: date, db: Session) -> Decim
         )
     ).order_by(Price.price_date.desc()).first()
     
-    if price:
-        return price.price
+    # Determine which to use based on recency
+    # If automatic price is more recent than manual, use automatic
+    # This allows automatic updates to override old manual entries
+    if auto_price and manual_price:
+        if auto_price.price_date >= manual_price.override_date:
+            return auto_price.price
+        else:
+            return manual_price.price
+    elif auto_price:
+        return auto_price.price
+    elif manual_price:
+        return manual_price.price
     
-    # Third priority: Fall back to test data
-    price = db.query(Price).filter(
+    # Last resort: Fall back to test data
+    test_price = db.query(Price).filter(
         and_(
             Price.instrument_id == instrument_id,
             Price.price_date <= price_date
         )
     ).order_by(Price.price_date.desc()).first()
     
-    return price.price if price else None
+    return test_price.price if test_price else None
 
 def get_fx_rate(currency: str, target_currency: str, rate_date: date, db: Session) -> Decimal:
     """Get FX rate for date"""
